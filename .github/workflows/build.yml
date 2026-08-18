@@ -44,26 +44,15 @@ jobs:
   build-sender:
     runs-on: ubuntu-latest
     container:
-      image: ubuntu:24.04
+      image: archlinux:latest
     steps:
       - uses: actions/checkout@v5
 
       - name: Install dependencies
-        env:
-          DEBIAN_FRONTEND: noninteractive
         run: |
-          apt-get update -q
-          for i in 1 2 3; do
-            timeout 300 apt-get install -y -q --no-install-recommends \
-              build-essential cmake pkg-config \
-              libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
-              libswresample-dev libavdevice-dev \
-              libpipewire-0.3-dev libavahi-client-dev \
-              libwayland-dev libwayland-bin libglib2.0-dev libssl-dev \
-              && break
-            echo "retry $i"
-            sleep 10
-          done
+          pacman -Syu --noconfirm --needed \
+            base-devel cmake pkg-config \
+            ffmpeg pipewire avahi wayland wayland-utils glib2 openssl
 
       - name: Configure and build
         working-directory: sender

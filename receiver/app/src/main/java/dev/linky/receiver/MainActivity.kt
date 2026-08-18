@@ -1,12 +1,12 @@
 package dev.linky.receiver
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.SurfaceHolder
 import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import dev.linky.receiver.adapter.LinkyAdapter
 import dev.linky.receiver.auth.AuthStore
@@ -38,6 +38,7 @@ class MainActivity : AppCompatActivity(), MediaSink {
         requestText = findViewById(R.id.request_text)
         val btnAccept: Button = findViewById(R.id.btn_accept)
         val btnDeny: Button = findViewById(R.id.btn_deny)
+        val btnAirplay: Button = findViewById(R.id.btn_airplay)
 
         surfaceView.holder.addCallback(object : SurfaceHolder.Callback {
             override fun surfaceCreated(h: SurfaceHolder) {
@@ -53,6 +54,7 @@ class MainActivity : AppCompatActivity(), MediaSink {
 
         btnAccept.setOnClickListener { adapter.respondAuthorized(); hideRequest() }
         btnDeny.setOnClickListener { adapter.respondDenied(); hideRequest() }
+        btnAirplay.setOnClickListener { enterAirPlay() }
 
         adapter = LinkyAdapter(applicationContext, AuthStore(this), this)
         adapter.onRequest = { name ->
@@ -63,6 +65,17 @@ class MainActivity : AppCompatActivity(), MediaSink {
         }
         adapter.start()
         statusText.text = getString(R.string.status_idle)
+    }
+
+    private fun enterAirPlay() {
+        // El modo Linky (puertos 61032/61034/61035/61036) y el servidor AirPlay
+        // (RAOP 7100, mDNS _airplay._tcp) no conviven: se para Linky antes.
+        runCatching { adapter.stop() }
+        val intent = Intent()
+        intent.component = android.content.ComponentName(
+            "dev.linky.receiver", "io.github.jqssun.airplay.MainActivity",
+        )
+        startActivity(intent)
     }
 
     private fun hideRequest() {

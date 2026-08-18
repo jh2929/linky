@@ -14,3 +14,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "linky-receiver"
 include(":app")
+include(":airplay-server:app")

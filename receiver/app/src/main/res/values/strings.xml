@@ -7,4 +7,5 @@
     <string name="request_title">El emisor «%1$s» quiere transmitir</string>
     <string name="request_accept">Aceptar</string>
     <string name="request_deny">Cancelar</string>
+    <string name="btn_airplay">Modo AirPlay</string>
 </resources>

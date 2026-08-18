@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Linky</string>
+    <string name="status_idle">Esperando emisor…</string>
+    <string name="status_streaming">Transmitiendo</string>
+    <string name="status_lost">Conexión perdida</string>
+    <string name="request_title">El emisor «%1$s» quiere transmitir</string>
+    <string name="request_accept">Aceptar</string>
+    <string name="request_deny">Cancelar</string>
+</resources>

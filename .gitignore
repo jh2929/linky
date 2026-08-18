@@ -4,3 +4,8 @@ build/
 core
 core.*
 .DS_Store
+.gradle/
+local.properties
+*.iml
+.idea/
+.kotlin/

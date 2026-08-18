@@ -10,6 +10,7 @@
 #include <thread>
 
 #include "common/log.h"
+#include "common/util.h"
 
 extern "C" {
 #include <libavdevice/avdevice.h>
@@ -50,6 +51,7 @@ class PulseAudioCapture : public AudioCapture {
   ~PulseAudioCapture() override { stop(); }
 
   bool start(std::function<void(const int16_t*, int)> on_pcm) override {
+    char ebuf[AV_ERROR_MAX_STRING_SIZE];
     on_pcm_ = std::move(on_pcm);
     avdevice_register_all();
 
@@ -70,7 +72,7 @@ class PulseAudioCapture : public AudioCapture {
     int r = avformat_open_input(&fmt_ctx_, source.c_str(), fmt, &opts);
     av_dict_free(&opts);
     if (r < 0) {
-      LERR("capa", "abrir %s: %s", source.c_str(), av_err2str(r));
+      LERR("capa", "abrir %s: %s", source.c_str(), fferr(r, ebuf, sizeof(ebuf)));
       return false;
     }
     thread_ = std::thread([this] { loop(); });
@@ -91,11 +93,12 @@ class PulseAudioCapture : public AudioCapture {
   std::atomic<bool> stop_{false};
 
   void loop() {
+    char ebuf[AV_ERROR_MAX_STRING_SIZE];
     AVPacket* pkt = av_packet_alloc();
     while (!stop_) {
       int r = av_read_frame(fmt_ctx_, pkt);
       if (r < 0) {
-        if (r != AVERROR_EOF) LWRN("capa", "av_read_frame: %s", av_err2str(r));
+        if (r != AVERROR_EOF) LWRN("capa", "av_read_frame: %s", fferr(r, ebuf, sizeof(ebuf)));
         av_packet_unref(pkt);
         continue;
       }

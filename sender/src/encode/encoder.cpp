@@ -13,6 +13,7 @@
 #include <mutex>
 
 #include "common/log.h"
+#include "common/util.h"
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -207,6 +208,7 @@ class VaapiVideoEncoder : public VideoEncoder {
   SwsContext* sw_ = nullptr;
 
   bool open(const char* name) {
+    char ebuf[AV_ERROR_MAX_STRING_SIZE];
     const AVCodec* codec = avcodec_find_encoder_by_name(name);
     if (!codec) {
       LERR("encv", "encoder %s no disponible en esta build", name);
@@ -217,7 +219,7 @@ class VaapiVideoEncoder : public VideoEncoder {
     if (err < 0)
       err = av_hwdevice_ctx_create(&hwdev_, AV_HWDEVICE_TYPE_VAAPI, nullptr, nullptr, 0);
     if (err < 0) {
-      LERR("encv", "vaapi: %s", av_err2str(err));
+      LERR("encv", "vaapi: %s", fferr(err, ebuf, sizeof(ebuf)));
       return false;
     }
     ctx_ = avcodec_alloc_context3(codec);
@@ -242,7 +244,7 @@ class VaapiVideoEncoder : public VideoEncoder {
 
     err = avcodec_open2(ctx_, codec, nullptr);
     if (err < 0) {
-      LERR("encv", "abrir %s: %s", name, av_err2str(err));
+      LERR("encv", "abrir %s: %s", name, fferr(err, ebuf, sizeof(ebuf)));
       close();
       return false;
     }
@@ -273,6 +275,7 @@ class OpusAudioEncoder : public AudioEncoder {
     if (swr_) swr_free(&swr_);
   }
 
+    char ebuf[AV_ERROR_MAX_STRING_SIZE];
   bool init() override {
     const AVCodec* codec = avcodec_find_encoder_by_name("opus");
     if (!codec) codec = avcodec_find_encoder_by_name("libopus");
@@ -297,7 +300,7 @@ class OpusAudioEncoder : public AudioEncoder {
       r = avcodec_open2(ctx_, codec, nullptr);
     }
     if (r < 0) {
-      LERR("enca", "abrir opus: %s", av_err2str(r));
+      LERR("enca", "abrir opus: %s", fferr(r, ebuf, sizeof(ebuf)));
       avcodec_free_context(&ctx_);
       ctx_ = nullptr;
       return false;

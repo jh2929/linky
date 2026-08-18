@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "common/log.h"
+#include "common/util.h"
 
 extern "C" {
 #include <libavdevice/avdevice.h>
@@ -31,6 +32,7 @@ class X11VideoCapture : public VideoCapture {
 
   bool start(const VideoSpec& spec,
              std::function<void(AVFrame*)> on_frame) override {
+    char ebuf[AV_ERROR_MAX_STRING_SIZE];
     spec_ = spec;
     on_frame_ = std::move(on_frame);
     const char* display = getenv("DISPLAY");
@@ -53,7 +55,7 @@ class X11VideoCapture : public VideoCapture {
     int r = avformat_open_input(&fmt_ctx_, display, fmt, &opts);
     av_dict_free(&opts);
     if (r < 0) {
-      LERR("capx", "x11grab abrir %s: %s", display, av_err2str(r));
+      LERR("capx", "x11grab abrir %s: %s", display, fferr(r, ebuf, sizeof(ebuf)));
       return false;
     }
     if (avformat_find_stream_info(fmt_ctx_, nullptr) < 0) {
@@ -83,13 +85,14 @@ class X11VideoCapture : public VideoCapture {
   std::atomic<bool> running_{false};
 
   void loop() {
+    char ebuf[AV_ERROR_MAX_STRING_SIZE];
     AVPacket* pkt = av_packet_alloc();
     AVFrame* raw = av_frame_alloc();
 
     while (!stop_) {
       int r = av_read_frame(fmt_ctx_, pkt);
       if (r < 0) {
-        if (r != AVERROR_EOF) LWRN("capx", "av_read_frame: %s", av_err2str(r));
+        if (r != AVERROR_EOF) LWRN("capx", "av_read_frame: %s", fferr(r, ebuf, sizeof(ebuf)));
         continue;
       }
       if (pkt->size == 0) continue;

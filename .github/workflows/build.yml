@@ -4,19 +4,25 @@ on:
   push:
     paths:
       - 'receiver/**'
+      - 'sender/**'
       - '.github/workflows/**'
   pull_request:
     paths:
       - 'receiver/**'
+      - 'sender/**'
+
+env:
+  APK_PATH: receiver/app/build/outputs/apk/debug/app-debug.apk
+  SENDER_TARBALL: linky-sender-linux-x86_64.tar.gz
 
 jobs:
   build-apk:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -29,7 +35,63 @@ jobs:
         run: ./gradlew :app:assembleDebug --no-daemon
 
       - name: Upload APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: linky-receiver-apk
-          path: receiver/app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ env.APK_PATH }}
+          if-no-files-found: error
+
+  build-sender:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config \
+            libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
+            libswresample-dev libavdevice-dev \
+            libpipewire-0.3-dev libavahi-client-dev \
+            libwayland-dev wayland-scanner libglib2.0-dev libssl-dev
+
+      - name: Configure and build
+        working-directory: sender
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DLINKY_GTK=OFF
+          cmake --build build -j$(nproc)
+
+      - name: Package tarball
+        run: |
+          mkdir -p dist
+          tar czf "${{ env.SENDER_TARBALL }}" \
+            -C sender/build linky-sender linky-dumpreceiver
+
+      - name: Upload tarball
+        uses: actions/upload-artifact@v5
+        with:
+          name: linky-sender-linux
+          path: ${{ env.SENDER_TARBALL }}
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-apk, build-sender]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          path: artifacts
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            artifacts/linky-receiver-apk/*.apk \
+            artifacts/linky-sender-linux/*.tar.gz \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Linky $GITHUB_REF_NAME" \
+            --notes "Emisor Linux (x86_64) + receptor Android (APK) para sideload por USB/adb o navegador. Ver README."

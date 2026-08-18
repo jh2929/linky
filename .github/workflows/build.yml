@@ -51,8 +51,30 @@ jobs:
       - name: Install dependencies
         run: |
           pacman -Syu --noconfirm --needed \
-            base-devel cmake pkg-config \
-            ffmpeg pipewire avahi wayland wayland-utils glib2 openssl
+            base-devel cmake pkg-config nasm \
+            opus libva libpulse libxcb libx11 libxext \
+            avahi glib2 openssl gtk4
+
+      - name: Build static FFmpeg
+        run: |
+          git clone --depth 1 https://github.com/FFmpeg/FFmpeg /opt/ffmpeg-src
+          cd /opt/ffmpeg-src
+          ./configure --prefix=/opt/ffmpeg-static --disable-shared --enable-static \
+            --disable-programs --disable-doc --disable-network --disable-autodetect \
+            --enable-avcodec --enable-avformat --enable-avdevice \
+            --enable-swscale --enable-swresample --enable-avutil \
+            --enable-encoder=hevc_vaapi,h264_vaapi,opus \
+            --enable-demuxer=pulse,x11grab \
+            --enable-pulse --enable-x11grab --enable-vaapi --enable-libopus
+          make -j$(nproc)
+          make install
+
+      - name: Configure and build
+        working-directory: sender
+        run: |
+          export PKG_CONFIG_PATH=/opt/ffmpeg-static/lib/pkgconfig
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DLINKY_GTK=ON
+          cmake --build build -j$(nproc)
 
       - name: Configure and build
         working-directory: sender

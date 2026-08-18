@@ -18,6 +18,19 @@ pkg_check_modules(WAYLAND REQUIRED IMPORTED_TARGET wayland-client)
 pkg_check_modules(GLIB REQUIRED IMPORTED_TARGET glib-2.0 gio-2.0)
 pkg_check_modules(OPENSSL REQUIRED IMPORTED_TARGET openssl)
 
+# FFmpeg estático (release Linux): pkg_check_modules no pasa --static, así que
+# las libs privadas (opus, libpulse…) se recogen aquí. Con FFmpeg dinámico
+# devuelve la misma lista sin daño.
+execute_process(
+  COMMAND ${PKG_CONFIG_EXECUTABLE} --static --libs
+          libavcodec libavformat libavutil libswscale libswresample libavdevice
+  OUTPUT_VARIABLE AV_STATIC_LIBS
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+  RESULT_VARIABLE AV_STATIC_RC)
+if(NOT AV_STATIC_RC EQUAL 0)
+  message(WARNING "pkg-config --static falló; se asume FFmpeg dinámico")
+endif()
+
 option(LINKY_GTK "Build the GTK4 UI" ON)
 if(LINKY_GTK)
   pkg_check_modules(GTK4 REQUIRED IMPORTED_TARGET gtk4)
@@ -67,7 +80,7 @@ target_include_directories(linky-sender PRIVATE src ${CMAKE_CURRENT_BINARY_DIR}/
 add_dependencies(linky-sender screencopy_proto)
 target_link_libraries(linky-sender PRIVATE
   PkgConfig::AV PkgConfig::PW PkgConfig::AVA PkgConfig::WAYLAND
-  PkgConfig::GLIB PkgConfig::OPENSSL
+  PkgConfig::GLIB PkgConfig::OPENSSL ${AV_STATIC_LIBS}
 )
 if(LINKY_GTK)
   target_sources(linky-sender PRIVATE src/ui/gtk_app.cpp)
@@ -82,4 +95,4 @@ add_executable(linky-dumpreceiver
   src/common/util.cpp
 )
 target_include_directories(linky-dumpreceiver PRIVATE src)
-target_link_libraries(linky-dumpreceiver PRIVATE PkgConfig::AV PkgConfig::OPENSSL)
+target_link_libraries(linky-dumpreceiver PRIVATE PkgConfig::AV PkgConfig::OPENSSL ${AV_STATIC_LIBS})

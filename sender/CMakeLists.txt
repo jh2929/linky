@@ -38,6 +38,7 @@ add_custom_command(
 )
 add_custom_command(
   OUTPUT ${SCREENCOPY_CODE}
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/generated
   COMMAND ${WAYLAND_SCANNER} private-code ${SCREENCOPY_XML} ${SCREENCOPY_CODE}
   DEPENDS ${SCREENCOPY_XML}
   COMMENT "Generando wlr-screencopy-unstable-v1 code"

@@ -55,7 +55,7 @@ jobs:
       - name: Install dependencies
         run: |
           pacman -Syu --noconfirm --needed \
-            base-devel cmake pkg-config nasm \
+            base-devel cmake pkg-config nasm git \
             opus libva libpulse libxcb libx11 libxext \
             avahi glib2 openssl gtk4
 

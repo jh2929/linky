@@ -69,8 +69,7 @@ jobs:
             --enable-avcodec --enable-avformat --enable-avdevice \
             --enable-swscale --enable-swresample --enable-avutil \
             --enable-encoder=libopus,hevc_vaapi,h264_vaapi \
-            --enable-demuxer=x11grab \
-            --enable-x11grab --enable-vaapi --enable-libopus
+            --enable-indev=xcbgrab --enable-vaapi --enable-libopus
           make -j$(nproc)
           make install
 

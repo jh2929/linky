@@ -61,7 +61,8 @@ jobs:
 
       - name: Build static FFmpeg
         run: |
-          git clone --depth 1 https://github.com/FFmpeg/FFmpeg /opt/ffmpeg-src
+          # Rama release/8.1: mantiene el dispositivo pulse (eliminado en master 9.x)
+          git clone --depth 1 --branch release/8.1 https://github.com/FFmpeg/FFmpeg /opt/ffmpeg-src
           cd /opt/ffmpeg-src
           ./configure --prefix=/opt/ffmpeg-static --disable-shared --enable-static \
             --disable-programs --disable-doc --disable-network --disable-autodetect \

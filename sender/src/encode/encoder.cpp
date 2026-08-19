@@ -277,8 +277,8 @@ class OpusAudioEncoder : public AudioEncoder {
 
     char ebuf[AV_ERROR_MAX_STRING_SIZE];
   bool init() override {
-    const AVCodec* codec = avcodec_find_encoder_by_name("opus");
-    if (!codec) codec = avcodec_find_encoder_by_name("libopus");
+    const AVCodec* codec = avcodec_find_encoder_by_name("libopus");
+    if (!codec) codec = avcodec_find_encoder_by_name("opus");
     if (!codec) {
       LERR("enca", "no hay encoder Opus en esta build");
       return false;
@@ -322,8 +322,10 @@ class OpusAudioEncoder : public AudioEncoder {
     const size_t frame = static_cast<size_t>(ctx_->frame_size);
     float tmp[frame * 2];
     while (fifo_.size() >= frame) {
-      swr_convert(swr_, reinterpret_cast<uint8_t**>(&tmp), static_cast<int>(frame),
-                  reinterpret_cast<const uint8_t**>(fifo_.data()),
+      const uint8_t* in_planes[1] = {
+          reinterpret_cast<const uint8_t*>(fifo_.data())};
+      uint8_t* out_planes[1] = {reinterpret_cast<uint8_t*>(tmp)};
+      swr_convert(swr_, out_planes, static_cast<int>(frame), in_planes,
                   static_cast<int>(frame));
       AVFrame* f = av_frame_alloc();
       f->format = ctx_->sample_fmt;
@@ -332,8 +334,8 @@ class OpusAudioEncoder : public AudioEncoder {
       f->nb_samples = ctx_->frame_size;
       if (av_frame_get_buffer(f, 0) == 0) {
         for (size_t i = 0; i < frame; ++i) {
-          f->data[0][i] = tmp[i * 2];
-          f->data[1][i] = tmp[i * 2 + 1];
+          f->data[0][i * 2] = tmp[i * 2];
+          f->data[0][i * 2 + 1] = tmp[i * 2 + 1];
         }
       }
       if (avcodec_send_frame(ctx_, f) == 0) {

@@ -68,9 +68,9 @@ jobs:
             --disable-programs --disable-doc --disable-network --disable-autodetect \
             --enable-avcodec --enable-avformat --enable-avdevice \
             --enable-swscale --enable-swresample --enable-avutil \
-            --enable-encoder=hevc_vaapi,h264_vaapi,opus \
-            --enable-demuxer=pulse,x11grab \
-            --enable-pulse --enable-x11grab --enable-vaapi --enable-libopus
+            --enable-encoder=libopus,hevc_vaapi,h264_vaapi \
+            --enable-demuxer=x11grab \
+            --enable-x11grab --enable-vaapi --enable-libopus
           make -j$(nproc)
           make install
 

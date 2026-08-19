@@ -1,6 +1,8 @@
-// Captura de audio del sistema (loopback del sink) mediante libavdevice
-// (device "pulse"). El nombre del monitor se resuelve con pactl; si no,
-// se usa el sink por defecto del usuario. PCM s16le 48 kHz estéreo.
+// Captura de audio del sistema (loopback del sink) mediante libpulse-simple
+// cargado en tiempo de ejecución (dlopen). El nombre del monitor se resuelve
+// con pactl; si no, no se puede monitorizar y se informa.
+// PCM s16le 48 kHz estéreo. No hay dependencia de link: cualquier sistema con
+// PipeWire/PulseAudio (libpulse-simple.so.0) funciona.
 #include "capture/video.h"
 
 #include <atomic>
@@ -9,16 +11,13 @@
 #include <memory>
 #include <thread>
 
-#include "common/log.h"
-#include "common/util.h"
-
+#include <dlfcn.h>
 extern "C" {
-#include <libavdevice/avdevice.h>
-#include <libavformat/avformat.h>
-#include <libavutil/frame.h>
-#include <libavutil/opt.h>
-#include <libswresample/swresample.h>
+#include <pulse/pulseaudio.h>
+#include <pulse/simple.h>
 }
+
+#include "common/log.h"
 
 namespace linky {
 
@@ -51,28 +50,41 @@ class PulseAudioCapture : public AudioCapture {
   ~PulseAudioCapture() override { stop(); }
 
   bool start(std::function<void(const int16_t*, int)> on_pcm) override {
-    char ebuf[AV_ERROR_MAX_STRING_SIZE];
     on_pcm_ = std::move(on_pcm);
-    avdevice_register_all();
+
+    dl_ = dlopen("libpulse-simple.so.0", RTLD_NOW | RTLD_LOCAL);
+    if (!dl_) {
+      LERR("capa", "libpulse-simple.so.0 no disponible (%s)", dlerror());
+      return false;
+    }
+    *(void**)(&fn_new_) = dlsym(dl_, "pa_simple_new");
+    *(void**)(&fn_read_) = dlsym(dl_, "pa_simple_read");
+    *(void**)(&fn_free_) = dlsym(dl_, "pa_simple_free");
+    *(void**)(&fn_strerror_) = dlsym(dl_, "pa_strerror");
+    if (!fn_new_ || !fn_read_ || !fn_free_ || !fn_strerror_) {
+      LERR("capa", "símbolos libpulse incompletos");
+      dlclose(dl_);
+      dl_ = nullptr;
+      return false;
+    }
 
     std::string source = resolve_monitor();
     if (source.empty()) {
-      LERR("capa", "no se encontró ningún sink para monitorizar");
+      LERR("capa", "no se encontró ningún sink para monitorizar (¿pactl?)");
       return false;
     }
     LINF("capa", "fuente de audio: %s", source.c_str());
 
-    AVDictionary* opts = nullptr;
-    av_dict_set(&opts, "sample_rate", "48000", 0);
-    av_dict_set(&opts, "channels", "2", 0);
-    av_dict_set(&opts, "sample_format", "s16le", 0);
-    av_dict_set(&opts, "frame_size", "960", 0);  // 20 ms
+    pa_sample_spec ss;
+    ss.format = PA_SAMPLE_S16LE;
+    ss.rate = 48000;
+    ss.channels = 2;
 
-    const AVInputFormat* fmt = av_find_input_format("pulse");
-    int r = avformat_open_input(&fmt_ctx_, source.c_str(), fmt, &opts);
-    av_dict_free(&opts);
-    if (r < 0) {
-      LERR("capa", "abrir %s: %s", source.c_str(), fferr(r, ebuf, sizeof(ebuf)));
+    int err = 0;
+    simple_ = fn_new_(nullptr, "linky-sender", PA_STREAM_RECORD, source.c_str(),
+                      "linky", &ss, nullptr, nullptr, &err);
+    if (!simple_) {
+      LERR("capa", "pa_simple_new %s: %s", source.c_str(), fn_strerror_(err));
       return false;
     }
     thread_ = std::thread([this] { loop(); });
@@ -83,30 +95,40 @@ class PulseAudioCapture : public AudioCapture {
     if (!thread_.joinable()) return;
     stop_ = true;
     thread_.join();
-    if (fmt_ctx_) avformat_close_input(&fmt_ctx_);
+    if (simple_) fn_free_(simple_);
+    if (dl_) dlclose(dl_);
   }
 
  private:
+  using FnNew = pa_simple* (*)(const char*, const char*, pa_stream_direction_t,
+                               const char*, const char*, const pa_sample_spec*,
+                               const pa_channel_map*, const pa_buffer_attr*, int*);
+  using FnRead = int (*)(pa_simple*, void*, size_t, int*);
+  using FnFree = void (*)(pa_simple*);
+  using FnStrerror = const char* (*)(int);
+
   std::function<void(const int16_t*, int)> on_pcm_;
-  AVFormatContext* fmt_ctx_ = nullptr;
   std::thread thread_;
   std::atomic<bool> stop_{false};
+  void* dl_ = nullptr;
+  pa_simple* simple_ = nullptr;
+  FnNew fn_new_ = nullptr;
+  FnRead fn_read_ = nullptr;
+  FnFree fn_free_ = nullptr;
+  FnStrerror fn_strerror_ = nullptr;
 
   void loop() {
-    char ebuf[AV_ERROR_MAX_STRING_SIZE];
-    AVPacket* pkt = av_packet_alloc();
+    // 20 ms de PCM s16le 48 kHz estéreo = 960 muestras = 3840 bytes.
+    constexpr size_t chunk = 960 * 2 * 2;
+    std::unique_ptr<int16_t[]> buf(new int16_t[chunk / 2]);
     while (!stop_) {
-      int r = av_read_frame(fmt_ctx_, pkt);
-      if (r < 0) {
-        if (r != AVERROR_EOF) LWRN("capa", "av_read_frame: %s", fferr(r, ebuf, sizeof(ebuf)));
-        av_packet_unref(pkt);
-        continue;
+      int err = 0;
+      if (fn_read_(simple_, buf.get(), chunk, &err) < 0) {
+        LWRN("capa", "pa_simple_read: %s", fn_strerror_(err));
+        break;
       }
-      if (on_pcm_ && pkt->size >= 2)
-        on_pcm_(reinterpret_cast<const int16_t*>(pkt->data), pkt->size / 2);
-      av_packet_unref(pkt);
+      if (on_pcm_) on_pcm_(buf.get(), chunk / 2);
     }
-    av_packet_free(&pkt);
   }
 };
 

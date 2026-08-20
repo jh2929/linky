@@ -115,13 +115,28 @@ void stream_start(const Device& dev) {
   if (const char* e = getenv("LINKY_TRAY_FPS")) fps = atoi(e);
   if (const char* e = getenv("LINKY_TRAY_BITRATE")) bitrate = atoi(e);
 
-  const char* bin = getenv("LINKY_STREAM_BIN");
-  const char* stream_bin = bin ? bin : "linky-stream";
+  // Resolver el binario: LINKY_STREAM_BIN -> mismo directorio que el tray
+  // (por si vive en ~/.local/bin fuera del PATH del sesión) -> PATH.
+  std::string stream_bin;
+  if (const char* b = getenv("LINKY_STREAM_BIN")) {
+    stream_bin = b;
+  } else {
+    char exe[4096];
+    ssize_t n = readlink("/proc/self/exe", exe, sizeof exe - 1);
+    if (n > 0) {
+      exe[n] = '\0';
+      std::string p(exe);
+      std::string::size_type slash = p.find_last_of('/');
+      stream_bin = (slash == std::string::npos) ? "linky-stream"
+                                                : p.substr(0, slash + 1) + "linky-stream";
+    }
+  }
+  if (stream_bin.empty()) stream_bin = "linky-stream";
 
   // Los std::string deben vivir hasta que g_spawn_async copia argv.
   std::string fps_s = std::to_string(fps);
   std::string bit_s = std::to_string(bitrate);
-  gchar* argv[] = {const_cast<gchar*>(stream_bin),
+  gchar* argv[] = {const_cast<gchar*>(stream_bin.c_str()),
                    const_cast<gchar*>("--connect"),
                    const_cast<gchar*>(dev.host.c_str()),
                    const_cast<gchar*>("--fps"),
@@ -140,7 +155,7 @@ void stream_start(const Device& dev) {
       nullptr, nullptr, &child, nullptr);
   g_strfreev(envp);
   if (!ok) {
-    LERR("tray", "no se pudo lanzar %s", stream_bin);
+    LERR("tray", "no se pudo lanzar %s", stream_bin.c_str());
     return;
   }
   g_child_watch_add(child, +[](GPid pid, int /*status*/, gpointer) {
@@ -157,12 +172,38 @@ void stream_start(const Device& dev) {
   refresh_waybar();
   LINF("tray", "transmitiendo a %s (%s) pid=%d", dev.name.c_str(),
        dev.host.c_str(), static_cast<int>(child));
+
+  // Si el stream muere a los pocos segundos (captura/control falla) se
+  // deshace el estado para que waybar vuelva a "idle".
+  g_timeout_add(2000, +[](gpointer data) -> gboolean {
+    pid_t pid = static_cast<pid_t>(*static_cast<pid_t*>(data));
+    delete static_cast<pid_t*>(data);
+    State st = state_read();
+    if (st.active && st.pid == pid && !process_alive(pid)) {
+      LERR("tray", "linky-stream (%d) murió al arrancar; reseteando estado", pid);
+      st.active = false;
+      st.pid = 0;
+      st.name.clear();
+      st.ip.clear();
+      state_write(st);
+      refresh_waybar();
+    }
+    return G_SOURCE_REMOVE;
+  }, new pid_t(static_cast<pid_t>(child)));
 }
 
 // ---------- modo --waybar ----------
 
 int waybar_mode() {
   State st = state_read();
+  if (st.active && !process_alive(st.pid)) {
+    // El stream murió sin actualizar el estado: sanear y mostrar idle.
+    st.active = false;
+    st.pid = 0;
+    st.name.clear();
+    st.ip.clear();
+    state_write(st);
+  }
   const char* icon = "\xEF\x87\x90";  // f047 TV (Font Awesome / Nerd)
   if (st.active) {
     printf("{\"text\":\"%s \",\"class\":\"streaming\","
@@ -209,6 +250,7 @@ static gboolean popup_on_device_cb(void* data) {
   // Se invoca desde el hilo de GTK (g_timeout_add). Refresca la lista con la
   // foto actual de discovery.devices() (copia segura).
   Popup* p = static_cast<Popup*>(data);
+  if (!p->window) return G_SOURCE_REMOVE;
   std::vector<Device> devs = p->disc.devices();
   if (devs == p->last) return G_SOURCE_CONTINUE;
   p->last = devs;
@@ -216,7 +258,7 @@ static gboolean popup_on_device_cb(void* data) {
   gtk_widget_set_visible(p->spin, false);
   gtk_widget_set_visible(p->empty, devs.empty());
 
-GtkListBox* list = GTK_LIST_BOX(p->list);
+  GtkListBox* list = GTK_LIST_BOX(p->list);
   gtk_list_box_remove_all(list);
   for (const Device& d : devs) {
     GtkWidget* row = gtk_list_box_row_new();
@@ -241,8 +283,24 @@ GtkListBox* list = GTK_LIST_BOX(p->list);
     gtk_list_box_row_set_activatable(GTK_LIST_BOX_ROW(row), true);
     auto* dev_copy = new Device(d);
     g_object_set_data_full(G_OBJECT(row), "device", dev_copy,
-                           +[](gpointer d) { delete static_cast<Device*>(d); });
+                           +[](gpointer data) { delete static_cast<Device*>(data); });
     gtk_list_box_append(list, row);
+
+    // El clic en la fila lanza el stream (GTK_SELECTION_NONE no emite
+    // "activate" de forma fiable, así que se usa un gesture explícito).
+    GtkGesture* tap = gtk_gesture_click_new();
+    gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(tap), GDK_BUTTON_PRIMARY);
+    g_signal_connect(tap, "released", G_CALLBACK(+[](GtkGestureClick* g, int, double,
+                                                     double, gpointer data) {
+      Popup* pp = static_cast<Popup*>(data);
+      GtkWidget* row = gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(g));
+      auto* d = static_cast<Device*>(g_object_get_data(G_OBJECT(row), "device"));
+      if (!d) return;
+      LINF("tray", "clic en %s (%s)", d->name.c_str(), d->host.c_str());
+      stream_start(*d);
+      popup_close(pp);
+    }), p);
+    gtk_widget_add_controller(row, GTK_EVENT_CONTROLLER(tap));
     g_signal_connect(row, "activate", G_CALLBACK(+[](GtkListBoxRow* row,
                                                      gpointer data) {
       Popup* pp = static_cast<Popup*>(data);
@@ -289,6 +347,50 @@ static void on_sigterm(int) {
   if (g_popup) g_idle_add(close_via_idle, g_popup);
 }
 
+// Estética Omarchy (tema Vantablack): negro, grises, acento monocromo.
+static void popup_apply_css() {
+  static const char* css =
+      "window.linky-popup {"
+      "  background-color: #0a0a0a;"
+      "  border: 1px solid #262626;"
+      "  border-radius: 14px;"
+      "}"
+      ".linky-head { padding: 14px 16px 10px 16px; }"
+      ".linky-icon { color: #8d8d8d; }"
+      ".linky-head label { color: #ffffff; font-size: 13px; font-weight: 600; }"
+      ".linky-popup list { background-color: #0a0a0a; }"
+      ".linky-popup row { border-radius: 8px; }"
+      ".linky-popup row:hover { background-color: #141414; }"
+      ".linky-popup row:focus { outline-width: 1px; outline-color: #8d8d8d; }"
+      ".tv-name { color: #ffffff; font-size: 14px; }"
+      ".tv-sub { color: #8d8d8d; font-size: 11px; }"
+      ".linky-empty { color: #8d8d8d; font-size: 12px; }"
+      ".linky-active {"
+      "  background-color: #101010;"
+      "  border-top: 1px solid #262626;"
+      "  padding: 12px 16px;"
+      "}"
+      ".linky-active label { color: #ffffff; font-size: 12px; }"
+      ".linky-active button {"
+      "  background-color: #1a1a1a;"
+      "  color: #ffffff;"
+      "  border: 1px solid #3a3a3a;"
+      "  border-radius: 8px;"
+      "  padding: 4px 12px;"
+      "  font-size: 12px;"
+      "}"
+      ".linky-active button:hover { background-color: #242424; }"
+      "scrollbar { background-color: transparent; }"
+      "scrollbar slider { background-color: #2a2a2a; border-radius: 4px; }"
+      "spinner { color: #8d8d8d; }";
+
+  GtkCssProvider* provider = gtk_css_provider_new();
+  gtk_css_provider_load_from_string(provider, css);
+  gtk_style_context_add_provider_for_display(
+      gdk_display_get_default(), GTK_STYLE_PROVIDER(provider),
+      GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+}
+
 int popup_run() {
   Popup p;
   g_popup = &p;
@@ -302,13 +404,15 @@ int popup_run() {
   }
   signal(SIGTERM, on_sigterm);
 
+  popup_apply_css();
+
   State st = state_read();
   st.popup_pid = getpid();
   state_write(st);
 
   p.window = gtk_window_new();
   gtk_window_set_title(GTK_WINDOW(p.window), "linky-tray");
-  gtk_window_set_default_size(GTK_WINDOW(p.window), 340, 380);
+  gtk_window_set_default_size(GTK_WINDOW(p.window), 360, 420);
   gtk_window_set_decorated(GTK_WINDOW(p.window), false);
   gtk_widget_add_css_class(p.window, "linky-popup");
 
@@ -402,6 +506,17 @@ int popup_run() {
 }  // namespace
 
 int main(int argc, char** argv) {
+  // Log de diagnóstico (los lanzadores waybar no capturan stderr).
+  const char* logpath = getenv("LINKY_TRAY_LOG");
+  if (logpath) {
+    int fd = open(logpath, O_WRONLY | O_CREAT | O_APPEND, 0600);
+    if (fd >= 0) {
+      dup2(fd, STDOUT_FILENO);
+      dup2(fd, STDERR_FILENO);
+      close(fd);
+    }
+  }
+
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
     if (a == "--waybar") return waybar_mode();
@@ -412,6 +527,9 @@ int main(int argc, char** argv) {
     if (a == "--toggle") break;
   }
 
+  // ID de app: define la clase de ventana en Wayland ("linky-tray") para que
+  // las reglas de Hyprland (flotante + posición) hagan match.
+  g_set_prgname("linky-tray");
   gtk_init();
   return popup_run();
 }

@@ -43,5 +43,22 @@
             </intent-filter>
         </activity>
 
+        <!-- Receptor Linky: servicio en primer plano (anuncia _linky._tcp y
+             escucha el canal de control) + auto-inicio al encender el TV. -->
+        <service
+            android:name=".service.LinkyService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice|mediaPlayback" />
+
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
     </application>
 </manifest>

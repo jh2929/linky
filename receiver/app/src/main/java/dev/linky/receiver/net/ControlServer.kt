@@ -119,11 +119,15 @@ class ControlServer(
         } finally {
             runCatching { socket.close() }
             synchronized(sockets) { sockets.remove(socket) }
+            if (welcomeSent) onBye?.invoke()
         }
     }
 
     /** Callbacks del sistema de media. */
     var onWelcome: ((Hello, codec: String, audio: String) -> Unit)? = null
+
+    /** La sesión terminó (bye o desconexión del emisor). */
+    var onBye: (() -> Unit)? = null
 
     private var negotiated = Hello("", "", emptyList())
     private var negotiatedCodecs: List<String> = emptyList()

@@ -1,11 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Linky</string>
-    <string name="status_idle">Esperando emisor…</string>
+    <string name="status_off">Apagado</string>
+    <string name="status_idle">Encendido · esperando emisor…</string>
     <string name="status_streaming">Transmitiendo</string>
     <string name="status_lost">Conexión perdida</string>
+    <string name="power_on">Encender</string>
+    <string name="power_off">Apagar</string>
+    <string name="boot_auto_start">Iniciar al encender el TV</string>
     <string name="request_title">El emisor «%1$s» quiere transmitir</string>
     <string name="request_accept">Aceptar</string>
     <string name="request_deny">Cancelar</string>
     <string name="btn_airplay">Modo AirPlay</string>
+    <string name="notification_channel">Receptor Linky</string>
+    <string name="notification_title">Linky activo</string>
+    <string name="notification_text">Esperando emisor en la red local</string>
 </resources>

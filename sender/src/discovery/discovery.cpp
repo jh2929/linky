@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <mutex>
 
 #include "common/log.h"
 
@@ -19,10 +20,12 @@ struct Discovery::Impl {
   AvahiServiceBrowser* browser = nullptr;
   Callback cb;
   std::vector<Device> devices;
+  std::mutex mtx;  // protege `devices` (hilo de Avahi vs. hilos de usuario)
 };
 
 std::vector<Device> Discovery::devices() const {
   if (!impl_) return {};
+  std::lock_guard<std::mutex> lk(impl_->mtx);
   return impl_->devices;
 }
 
@@ -55,16 +58,24 @@ static void resolve_cb(AvahiServiceResolver* r, AvahiIfIndex, AvahiProtocol,
     else if (k == "apiver") dev.apiver = v;
   }
 
-  bool exists = false;
-  for (auto& e : d->devices) {
-    if (e.host == dev.host && e.port == dev.port) {
-      e = dev;
-      exists = true;
-      break;
+  {
+    std::lock_guard<std::mutex> lk(d->mtx);
+    bool exists = false;
+    for (auto& e : d->devices) {
+      if (e.host == dev.host && e.port == dev.port) {
+        e = dev;
+        exists = true;
+        break;
+      }
     }
+    if (!exists) d->devices.push_back(dev);
   }
-  if (!exists) d->devices.push_back(dev);
-  if (d->cb) d->cb(d->devices);
+  std::vector<Device> snapshot;
+  {
+    std::lock_guard<std::mutex> lk(d->mtx);
+    snapshot = d->devices;
+  }
+  if (d->cb) d->cb(snapshot);
 
   avahi_service_resolver_free(r);
 }
@@ -81,11 +92,19 @@ static void browser_cb(AvahiServiceBrowser*, AvahiIfIndex, AvahiProtocol,
       break;
     }
     case AVAHI_BROWSER_REMOVE: {
-      d->devices.erase(
-          std::remove_if(d->devices.begin(), d->devices.end(),
-                         [&](const Device& dev) { return dev.name == name; }),
-          d->devices.end());
-      if (d->cb) d->cb(d->devices);
+      {
+        std::lock_guard<std::mutex> lk(d->mtx);
+        d->devices.erase(
+            std::remove_if(d->devices.begin(), d->devices.end(),
+                           [&](const Device& dev) { return dev.name == name; }),
+            d->devices.end());
+      }
+      std::vector<Device> snapshot;
+      {
+        std::lock_guard<std::mutex> lk(d->mtx);
+        snapshot = d->devices;
+      }
+      if (d->cb) d->cb(snapshot);
       break;
     }
     case AVAHI_BROWSER_FAILURE:

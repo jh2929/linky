@@ -15,6 +15,12 @@ struct Device {
   std::string codecs;    // TXT: "codecs" (lista separada por comas)
   std::string audio;     // TXT: "audio"
   std::string apiver;    // TXT: "apiver"
+
+  bool operator==(const Device& o) const {
+    return name == o.name && host == o.host && port == o.port &&
+           model == o.model && codecs == o.codecs && audio == o.audio &&
+           apiver == o.apiver;
+  }
 };
 
 class Discovery {

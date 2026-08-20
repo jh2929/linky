@@ -31,7 +31,7 @@ if(NOT AV_STATIC_RC EQUAL 0)
   message(WARNING "pkg-config --static falló; se asume FFmpeg dinámico")
 endif()
 
-option(LINKY_GTK "Build the GTK4 UI" ON)
+option(LINKY_GTK "Build the GTK4 UI" OFF)
 if(LINKY_GTK)
   pkg_check_modules(GTK4 REQUIRED IMPORTED_TARGET gtk4)
 endif()
@@ -58,7 +58,7 @@ add_custom_command(
 )
 add_custom_target(screencopy_proto DEPENDS ${SCREENCOPY_HEADER} ${SCREENCOPY_CODE})
 
-add_executable(linky-sender
+add_executable(linky-stream
   src/main.cpp
   src/common/log.cpp
   src/common/json.cpp
@@ -76,17 +76,26 @@ add_executable(linky-sender
   src/session/control.cpp
   src/app/sender_app.cpp
 )
-target_include_directories(linky-sender PRIVATE src ${CMAKE_CURRENT_BINARY_DIR}/generated)
-add_dependencies(linky-sender screencopy_proto)
-target_link_libraries(linky-sender PRIVATE
+target_include_directories(linky-stream PRIVATE src ${CMAKE_CURRENT_BINARY_DIR}/generated)
+add_dependencies(linky-stream screencopy_proto)
+target_link_libraries(linky-stream PRIVATE
   PkgConfig::AV PkgConfig::PW PkgConfig::AVA PkgConfig::WAYLAND
   PkgConfig::GLIB PkgConfig::OPENSSL ${AV_STATIC_LIBS}
 )
-if(LINKY_GTK)
-  target_sources(linky-sender PRIVATE src/ui/gtk_app.cpp)
-  target_compile_definitions(linky-sender PRIVATE LINKY_HAS_GTK=1)
-  target_link_libraries(linky-sender PRIVATE PkgConfig::GTK4)
-endif()
+
+# linky-tray: menú GTK4 con descubrimiento DNS-SD para la barra del sistema.
+pkg_check_modules(GTK4 REQUIRED IMPORTED_TARGET gtk4)
+add_executable(linky-tray
+  src/tray/tray_main.cpp
+  src/common/log.cpp
+  src/common/util.cpp
+  src/discovery/discovery.cpp
+)
+target_include_directories(linky-tray PRIVATE src)
+target_link_libraries(linky-tray PRIVATE
+  PkgConfig::GTK4 PkgConfig::AVA PkgConfig::GLIB
+  PkgConfig::AV PkgConfig::OPENSSL ${AV_STATIC_LIBS}
+)
 
 add_executable(linky-dumpreceiver
   tools/dumpreceiver/main.cpp

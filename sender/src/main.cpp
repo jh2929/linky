@@ -1,8 +1,7 @@
-// Linky Sender — punto de entrada. Modos:
-//   linky-sender --probe                        sondeo de capacidades HW
-//   linky-sender --list                         lista receptores DNS-SD
-//   linky-sender --connect <nombre|ip> [opts]   transmisión CLI
-//   linky-sender (sin args)                     interfaz GTK4 (si compilada)
+// Linky Stream — punto de entrada. Modos:
+//   linky-stream --probe                        sondeo de capacidades HW
+//   linky-stream --list                         lista receptores DNS-SD
+//   linky-stream --connect <nombre|ip> [opts]   transmisión CLI (headless)
 #include <signal.h>
 #include <unistd.h>
 
@@ -24,6 +23,28 @@ namespace {
 std::atomic<bool> g_quit{false};
 void on_signal(int) { g_quit = true; }
 }  // namespace
+
+// Resolución del monitor primario (X11/Xwayland) vía xrandr. Es la "pantalla
+// completa" por defecto cuando no se pide un tamaño concreto.
+static bool screen_size(int& w, int& h) {
+  FILE* p = popen("xrandr --current 2>/dev/null", "r");
+  if (!p) return false;
+  char buf[256];
+  bool ok = false;
+  while (fgets(buf, sizeof buf, p)) {
+    int sw = 0, sh = 0;
+    char sep[2] = {0};
+    // línea del modo activo:  "1366x768      59.80*+"
+    if (sscanf(buf, "%dx%d%1s", &sw, &sh, sep) == 3 && *sep) {
+      w = sw;
+      h = sh;
+      ok = true;
+      break;
+    }
+  }
+  pclose(p);
+  return ok;
+}
 
 static void run_probe() {
   EncoderInfo info = probe_encoders();
@@ -128,7 +149,7 @@ int main(int argc, char** argv) {
   std::string connect_to;
   SenderConfig cfg;
   cfg.device_name = hostname();
-  bool probe = false, list_only = false;
+  bool probe = false, list_only = false, size_given = false;
 
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
@@ -143,13 +164,13 @@ int main(int argc, char** argv) {
     else if (a == "--list") list_only = true;
     else if (a == "--connect") connect_to = next("--connect");
     else if (a == "--name") cfg.device_name = next("--name");
-    else if (a == "--width") cfg.width = std::stoi(next("--width"));
-    else if (a == "--height") cfg.height = std::stoi(next("--height"));
+    else if (a == "--width") { cfg.width = std::stoi(next("--width")); size_given = true; }
+    else if (a == "--height") { cfg.height = std::stoi(next("--height")); size_given = true; }
     else if (a == "--fps") cfg.fps = std::stoi(next("--fps"));
     else if (a == "--bitrate") cfg.bitrate_kbps = std::stoi(next("--bitrate"));
     else if (a == "--no-audio") cfg.audio = false;
     else {
-      std::cerr << "uso: linky-sender [--probe|--list|--connect <nombre|ip> "
+      std::cerr << "uso: linky-stream [--probe|--list|--connect <nombre|ip> "
                    "[--name X] [--width W] [--height H] [--fps N] "
                    "[--bitrate KBPS] [--no-audio]]\n";
       return 2;
@@ -184,12 +205,17 @@ int main(int argc, char** argv) {
     return 0;
   }
 
-#if LINKY_HAS_GTK
-  if (connect_to.empty()) {
-    extern int gtk_run();  // ui/gtk_app.cpp
-    return gtk_run();
+  if (!size_given) {
+    int w = 0, h = 0;
+    if (!screen_size(w, h)) {
+      std::cerr << "no se pudo detectar la resolución del monitor; usa "
+                   "--width/--height\n";
+      return 2;
+    }
+    cfg.width = w;
+    cfg.height = h;
+    printf("[auto] pantalla completa %dx%d\n", w, h);
   }
-#endif
 
   return run_cli(connect_to, cfg);
 }

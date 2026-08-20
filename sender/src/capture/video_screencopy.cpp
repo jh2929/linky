@@ -103,7 +103,6 @@ void frame_ready(void* data, zwlr_screencopy_frame_v1* frame, uint32_t,
                  uint32_t, uint32_t) {
   auto* fs = static_cast<FrameState*>(data);
   fs->ready = true;
-  LINF("caps", "screencopy: ready");
   (void)frame;
 }
 
@@ -181,12 +180,21 @@ class ScreencopyVideoCapture final : public VideoCapture {
     }
     connected_.store(true);
     LINF("caps", "wayland: capturando salida via zwlr_screencopy");
+    const auto frame_interval =
+        std::chrono::microseconds(1000000 / std::max(1, spec_.fps));
     while (running_) {
+      const auto t0 = std::chrono::steady_clock::now();
       if (!capture_one()) {
         if (!running_) break;
         LERR("caps", "wayland: captura fallida, reintentando");
         std::this_thread::sleep_for(std::chrono::milliseconds(150));
+        continue;
       }
+      // Pacing: no capturar más rápido que spec_.fps (el compositor entrega
+      // a su refresco; 144 Hz consumiría CPU/GPU sin beneficio).
+      const auto elapsed = std::chrono::steady_clock::now() - t0;
+      if (elapsed < frame_interval)
+        std::this_thread::sleep_for(frame_interval - elapsed);
     }
     cleanup();
   }
@@ -301,9 +309,19 @@ class ScreencopyVideoCapture final : public VideoCapture {
     }
     if (!ensure_pool(fs, fs.stride, fs.height)) {
       zwlr_screencopy_frame_v1_destroy(frame);
+      // ensure_pool pudo destruir el pool anterior antes de fallar: evitar
+      // doble free en cleanup().
+      frame_state_->pool = nullptr;
+      frame_state_->mem = nullptr;
+      frame_state_->pool_size = 0;
       LERR("caps", "wayland: no hay memoria para el buffer de captura");
       return false;
     }
+    // El pool vive entre frames en frame_state_ (se recrea solo si cambia la
+    // geometría); sin este write-back cada frame filtraba el pool anterior.
+    frame_state_->pool = fs.pool;
+    frame_state_->mem = fs.mem;
+    frame_state_->pool_size = fs.pool_size;
     auto* buffer = wl_shm_pool_create_buffer(fs.pool, 0, fs.width, fs.height,
                                              fs.stride, fs.format);
     if (!buffer) {

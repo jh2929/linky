@@ -80,53 +80,47 @@ class Depacketizer {
     if (size < 12) return;
     const uint8_t* p = pkt + 12;
     int len = size - 12;
-    if (len < 1) return;
-    uint8_t nal = p[0] & 0x1f;
-    if (nal == 28) {  // H.264 FU-A
+    if (len < 2) return;
+    const int t264 = p[0] & 0x1f;
+    const int t265 = (p[0] >> 1) & 0x3f;
+    if (t264 == 28 || t265 == 49) {  // FU-A / FU
+      // El payload del 1er fragmento incluye la cabecera NAL completa.
       uint8_t fu = p[1];
       if (fu & 0x80) {
-        annexb_.clear();
-        push_sc();
-        annexb_.push_back(static_cast<uint8_t>(0x60 | (fu & 0x1f)));
-        annexb_.insert(annexb_.end(), p + 2, p + len);
-      } else {
-        annexb_.insert(annexb_.end(), p + 2, p + len);
+        fu_.clear();
+        fu_.insert(fu_.end(), {0, 0, 0, 1});
       }
-      if (fu & 0x40) flush();
-    } else if (nal == 49) {  // H.265 FU
-      uint8_t fu = p[1];
-      uint8_t type = static_cast<uint8_t>((fu >> 1) & 0x3f);
-      if (fu & 0x80) {
-        annexb_.clear();
-        push_sc();
-        annexb_.push_back(static_cast<uint8_t>((p[0] & 0x81) | ((type & 0x3f) << 1)));
-        annexb_.insert(annexb_.end(), p + 2, p + len);
-      } else {
-        annexb_.insert(annexb_.end(), p + 2, p + len);
+      fu_.insert(fu_.end(), p + 2, p + len);
+      if (fu & 0x40) {  // end of FU: la NAL está completa
+        annexb_.insert(annexb_.end(), fu_.begin(), fu_.end());
+        fu_.clear();
       }
-      if (fu & 0x40) flush();
-    } else if (nal == 32 || nal == 33 || nal == 34 || nal == 39 ||
-               (nal <= 21 && nal >= 1)) {
-      push_sc();
+    } else {
+      // NAL entero (SPS/PPS/VPS/IDR…)
+      annexb_.insert(annexb_.end(), {0, 0, 0, 1});
       annexb_.insert(annexb_.end(), p, p + len);
-      flush();
     }
   }
 
- private:
-  std::vector<uint8_t> annexb_;
-
-  void push_sc() { annexb_.insert(annexb_.end(), {0, 0, 0, 1}); }
-  void flush() {
+  // El bit marker (último paquete del AU) delimita la unidad de acceso:
+  // entregarla entera (SPS+PPS+IDR juntos) evita "no frame!" en el decoder.
+  void end_au() {
     if (annexb_.empty()) return;
     if (on_au) on_au(annexb_.data(), static_cast<int>(annexb_.size()));
     annexb_.clear();
   }
+
+ private:
+  std::vector<uint8_t> annexb_;
+  std::vector<uint8_t> fu_;
 };
 
 }  // namespace
 
 static std::string g_codec = "h264";
+static FILE* g_dump_au = nullptr;
+static bool g_no_loss = false;
+static bool g_force_h264 = false;
 
 static void control_loop() {
   int fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -156,7 +150,9 @@ static void control_loop() {
       Json hello;
       json_decode(buf.substr(0, eol), hello);
       std::string codecs = hello["codecs"];
-      std::string codec = codecs.find("h265") != std::string::npos ? "h265" : "h264";
+      std::string codec = g_force_h264 ? "h264"
+                         : codecs.find("h265") != std::string::npos ? "h265"
+                                                                    : "h264";
       g_codec = codec;
       Json welcome;
       welcome["type"] = "welcome";
@@ -184,21 +180,22 @@ static void video_loop(bool decode) {
   sockaddr_in sender_rtcp{};
   bool have_sender_rtcp = false;
 
-  if (decode) {
-    const AVCodec* codec =
-        avcodec_find_decoder(g_codec == "h265" ? AV_CODEC_ID_HEVC : AV_CODEC_ID_H264);
-    if (codec) {
-      dctx = avcodec_alloc_context3(codec);
-      dctx->flags |= AV_CODEC_FLAG_LOW_DELAY;
-      if (avcodec_open2(dctx, codec, nullptr) < 0) {
-        avcodec_free_context(&dctx);
-        dctx = nullptr;
-      }
-    }
-  }
   dep.on_au = [&](const uint8_t* data, int size) {
     g_frames.fetch_add(1);
     if (is_keyframe(data, size)) g_key.fetch_add(1);
+    if (decode && !dctx) {  // perezoso: g_codec ya lo fijó el hello del control
+      const AVCodec* codec =
+          avcodec_find_decoder(g_codec == "h265" ? AV_CODEC_ID_HEVC : AV_CODEC_ID_H264);
+      if (codec) {
+        dctx = avcodec_alloc_context3(codec);
+        dctx->flags |= AV_CODEC_FLAG_LOW_DELAY;
+        if (avcodec_open2(dctx, codec, nullptr) < 0) {
+          avcodec_free_context(&dctx);
+          dctx = nullptr;
+        }
+      }
+    }
+    if (g_dump_au) fwrite(data, 1, static_cast<size_t>(size), g_dump_au);
     if (dctx) {
       AVPacket pkt;
       av_init_packet(&pkt);
@@ -244,8 +241,9 @@ static void video_loop(bool decode) {
         if (n >= 14) {
           uint16_t seq = static_cast<uint16_t>((buf[2] << 8) | buf[3]);
           bool marker = buf[1] & 0x80;
-          // Pérdida simulada (1 %) → NACK real, y PLI periódico (7 s)
-          if (seq % 100 == 7) {
+          // Pérdida simulada (1 %) → NACK real, y PLI periódico (7 s).
+          // Con --noloss el decodificador debe decodificar sin errores.
+          if (!g_no_loss && seq % 100 == 7) {
             if (nacks_sent++ < 3) {
               std::array<uint8_t, 16> nack{};
               nack[0] = 0x81;
@@ -261,6 +259,7 @@ static void video_loop(bool decode) {
             }
           } else {
             dep.feed(buf, static_cast<int>(n));
+            if (marker) dep.end_au();
           }
           g_pkts_video.fetch_add(1);
           g_bytes_video.fetch_add(static_cast<uint64_t>(n));
@@ -284,10 +283,10 @@ static void video_loop(bool decode) {
       last_report = now;
       printf("[dump] video: %d frames/s (%d key), %.0f kbps, %llu pkt/s\n",
              g_frames.exchange(0), g_key.exchange(0),
-             g_bytes_video.load() * 8.0 / 2.0 / 1000.0,
+             g_bytes_video.exchange(0) * 8.0 / 2.0 / 1000.0,
              static_cast<unsigned long long>(g_pkts_video.exchange(0)));
       printf("[dump] audio: %.0f kbps, %llu pkt/s\n",
-             g_bytes_audio.load() * 8.0 / 2.0 / 1000.0,
+             g_bytes_audio.exchange(0) * 8.0 / 2.0 / 1000.0,
              static_cast<unsigned long long>(g_pkts_audio.exchange(0)));
       fflush(stdout);
     }
@@ -309,6 +308,16 @@ static void audio_loop() {
 
 int main(int argc, char** argv) {
   bool decode = argc > 1 && strcmp(argv[1], "--decode") == 0;
+  if (decode && argc > 2) {
+    for (int i = 2; i < argc; ++i) {
+      if (strcmp(argv[i], "--noloss") == 0)
+        g_no_loss = true;
+      else if (strcmp(argv[i], "--h264") == 0)
+        g_force_h264 = true;
+      else
+        g_dump_au = fopen(argv[i], "wb");
+    }
+  }
   log::sink().min = log::Level::Info;
   printf("linky-dumpreceiver — receptor de prueba local\n");
   printf(" control :%d  video :%d (rtcp %d)  audio :%d\n", kCtrlPort, kVideoPort,

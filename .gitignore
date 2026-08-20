@@ -9,3 +9,4 @@ local.properties
 *.iml
 .idea/
 .kotlin/
+sender/build-dbg/

@@ -10,6 +10,7 @@ import android.content.pm.ServiceInfo
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import android.view.Surface
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
@@ -38,6 +39,7 @@ class LinkyService : Service() {
         const val ACTION_STOP = "dev.linky.receiver.STOP"
         private const val CHANNEL_ID = "linky"
         private const val NOTIFICATION_ID = 2
+        private const val TAG = "linky"
     }
 
     private val binder = LocalBinder()
@@ -119,6 +121,7 @@ class LinkyService : Service() {
         stateListener?.invoke(true)
         sink?.onStatus(stateText)
         promoteToForeground()
+        Log.i(TAG, "receptor encendido")
 
         adapter = LinkyAdapter(
             this,
@@ -132,11 +135,13 @@ class LinkyService : Service() {
             },
         )
         adapter?.onRequest = { name ->
+            Log.i(TAG, "petición de conexión de '$name'")
             pendingRequestName = name
             launchUi()
             requestListener?.invoke(name)
         }
         adapter?.onWelcome = { hello, codec, audio ->
+            Log.i(TAG, "sesión negociada (codec=$codec, audio=$audio)")
             val t = Triple(hello, codec, audio)
             pending = t
             lastSession = t
@@ -229,6 +234,7 @@ class LinkyService : Service() {
         val s = sink ?: return
         if (s.surface == null) return
         pending = null
+        Log.i(TAG, "arrancando media con superficie disponible")
         adapter?.startMedia(p.first, p.second, p.third)
     }
 

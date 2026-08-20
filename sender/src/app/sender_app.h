@@ -101,6 +101,7 @@ class SenderApp {
   int64_t last_stats_ns_ = 0;
   int64_t last_fps_ns_ = 0;
   double fps_ema_ = 0;
+  int last_frames_ = 0;
   uint64_t vbytes_since_ = 0;   // bytes enviados desde la última estadística
   int64_t last_send_ns_ = 0;
   Codec codec_ = Codec::H264;

@@ -17,6 +17,9 @@ void rtp_append(std::vector<std::vector<uint8_t>>& out, const RtpHeader& h,
 }
 
 // NAL de Annex B: devuelve puntero+longitud y avanza.
+// Solo 00 00 00 01 / 00 00 01 delimitan NAL; 00 00 03 (emulación de
+// inicio de código) NO es frontera — sin esto, los SPS/PPS/VPS/IDR con
+// bytes < 0x04 quedaban truncados y el decodificador los rechazaba.
 const uint8_t* next_nal(const uint8_t* data, size_t size, size_t& offset,
                         size_t& nal_len, int& nal_type) {
   while (offset + 3 < size) {
@@ -25,9 +28,16 @@ const uint8_t* next_nal(const uint8_t* data, size_t size, size_t& offset,
       if (code) {
         const uint8_t* start = data + offset + code;
         size_t end = offset + code;
-        while (end + 2 < size &&
-               !(data[end] == 0 && data[end + 1] == 0)) {
-          end += (data[end] == 0 && data[end + 1] == 0 && data[end + 2] == 1) ? 2 : 1;
+        while (end + 2 < size) {
+          if (data[end] == 0 && data[end + 1] == 0) {
+            if (data[end + 2] == 1) break;  // start code siguiente
+            if (data[end + 2] == 0 && end + 3 < size && data[end + 3] == 1) break;
+            if (data[end + 2] == 3) {        // 00 00 03: emulación, seguir
+              end += 3;
+              continue;
+            }
+          }
+          ++end;
         }
         if (end + 2 >= size) end = size;
         nal_len = end - (offset + code);
@@ -65,12 +75,24 @@ void rtp_build_header(uint8_t* out, const RtpHeader& h) {
 
 bool annexb_is_keyframe(const AVPacket* pkt) {
   if (!pkt || pkt->size < 6) return false;
-  // NAL con start code de 4 bytes (00 00 00 01): cabecera en data[4].
-  // h264 (1 byte): tipo 5 = IDR. h265 (2 bytes): 32 = VPS, 33 = SPS
-  // (primera NAL del keyframe), 19-21 = IDR_W_RADL/IDR_N_LP/CRA.
-  const int t264 = pkt->data[4] & 0x1f;
-  const int t265 = (pkt->data[4] >> 1) & 0x3f;
-  return t264 == 5 || t265 == 32 || t265 == 33 || (t265 >= 19 && t265 <= 21);
+  // Recorre todas las NAL del paquete: el IDR puede no ser la primera
+  // (VAAPI h264 emite SPS+PPS+SEI+IDR en el primer paquete; comprobar solo
+  // data[4] lo perdía y el receptor nunca recibía SPS/PPS → PPS no existe).
+  size_t offset = 0, nal_len = 0;
+  int nal_type = 0;
+  const uint8_t* n =
+      next_nal(pkt->data, static_cast<size_t>(pkt->size), offset, nal_len, nal_type);
+  while (n) {
+    // h264: 5 = IDR (SPS 7 / PPS 8 también valen: preceden al IDR).
+    // h265: 32 = VPS, 33 = SPS, 19-21 = IDR_W_RADL/IDR_N_LP/CRA.
+    const int t264 = n[0] & 0x1f;
+    const int t265 = (n[0] >> 1) & 0x3f;
+    if (t264 == 5 || t264 == 7 || t264 == 8 || t265 == 32 || t265 == 33 ||
+        (t265 >= 19 && t265 <= 21))
+      return true;
+    n = next_nal(pkt->data, static_cast<size_t>(pkt->size), offset, nal_len, nal_type);
+  }
+  return false;
 }
 
 void packetize_h264(const AVPacket* annexb, uint16_t& seq, uint32_t ts,
@@ -113,14 +135,16 @@ void packetize_h264(const AVPacket* annexb, uint16_t& seq, uint32_t ts,
       rtp_append(out, h, data, static_cast<int>(len));
       continue;
     }
-    // FU-A (RFC 6184 5.8): 1 byte FU indicator + 1 byte FU header
+    // FU-A (RFC 6184 5.8): 1 byte indicador (tipo 28) + 1 byte cabecera FU.
+    // El 1er fragmento lleva la cabecera NAL completa en el payload: el
+    // receptor ensambla start code + payload sin reconstruir cabeceras.
     const int payload = mtu - 2;
-    size_t pos = 1;
+    size_t pos = 0;
     int idx = 0;
     while (pos < len) {
       size_t chunk = std::min<size_t>(payload, len - pos);
       bool last = pos + chunk >= len;
-      uint8_t fu[2] = {static_cast<uint8_t>(0x60 | (data[0] & 0x1f)),
+      uint8_t fu[2] = {static_cast<uint8_t>((data[0] & 0x60) | 28),
                        static_cast<uint8_t>((idx == 0 ? 0x80 : 0) | (last ? 0x40 : 0) | (data[0] & 0x1f))};
       h.seq = seq++;
       h.marker = false;
@@ -160,19 +184,22 @@ void packetize_h265(const AVPacket* annexb, uint16_t& seq, uint32_t ts,
         h.marker = false;
         rtp_append(out, h, n, static_cast<int>(nal_len));
       } else {
-        // FU (RFC 7798): 2 bytes de cabecera FU
+        // FU (RFC 7798, mismo layout compacto que FU-A): indicador tipo 49
+        // (bits 1..6) + cabecera S|E|tipo; el 1er fragmento lleva la cabecera
+        // NAL completa en el payload (el receptor no reconstruye cabeceras).
         const int payload = mtu - 2;
-        size_t pos = 1;
+        size_t pos = 0;
         int idx = 0;
         while (pos < nal_len) {
           size_t chunk = std::min<size_t>(payload, nal_len - pos);
           bool last = pos + chunk >= nal_len;
-          uint8_t fu2[2] = {0x80 | 49, static_cast<uint8_t>((idx == 0 ? 0x80 : 0) | (last ? 0x40 : 0) | (n[0] & 0x3f))};
+          uint8_t fu[2] = {0x62,  // 49<<1: FU H.265, F=0, capa 0
+                           static_cast<uint8_t>((idx == 0 ? 0x80 : 0) | (last ? 0x40 : 0) | ((n[0] >> 1) & 0x3f))};
           h.seq = seq++;
           h.marker = false;
           std::vector<uint8_t> pkt(static_cast<size_t>(kRtpFixed + 2 + chunk));
           rtp_build_header(pkt.data(), h);
-          memcpy(pkt.data() + kRtpFixed, fu2, 2);
+          memcpy(pkt.data() + kRtpFixed, fu, 2);
           memcpy(pkt.data() + kRtpFixed + 2, n + pos, chunk);
           out.push_back(std::move(pkt));
           pos += chunk;

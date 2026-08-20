@@ -1,6 +1,7 @@
 package dev.linky.receiver.adapter
 
 import android.content.Context
+import android.util.Log
 import dev.linky.receiver.auth.AuthStore
 import dev.linky.receiver.media.MediaEngine
 import dev.linky.receiver.media.MediaSink
@@ -67,8 +68,15 @@ class LinkyAdapter(
     /** Arranca la reproducción una vez negociada la sesión y hay superficie. */
     @Synchronized
     fun startMedia(hello: Hello, codec: String, audio: String) {
+        if (!startMediaOnce(hello, codec, audio) && codec == "h265") {
+            Log.w(TAG, "h265 no disponible en este TV; reintento con h264")
+            startMediaOnce(hello, "h264", audio)
+        }
+    }
+
+    private fun startMediaOnce(hello: Hello, codec: String, audio: String): Boolean {
         stopMedia()
-        try {
+        return try {
             val m = MediaEngine(requestSink)
             m.start(hello, codec, audio)
             media = m
@@ -79,10 +87,14 @@ class LinkyAdapter(
                 })
             }
             mediaActive = true
-        } catch (_: Exception) {
+            Log.i(TAG, "media arrancada (codec=$codec)")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "no se pudo arrancar media", e)
             media = null
             rtp = null
             mediaActive = false
+            false
         }
     }
 
@@ -110,19 +122,27 @@ class LinkyAdapter(
         pending = null
         if (p != null) {
             auth.trust(p.senderId)
-            p.accept()
+            // El accept escribe por el socket: nunca desde el hilo de la UI
+            // (NetworkOnMainThreadException).
+            Thread({ p.accept() }, "linky-accept").apply { isDaemon = true }.start()
         }
     }
 
     fun respondDenied() {
         val p = pending
         pending = null
-        p?.deny()
+        p?.let {
+            Thread({ it.deny() }, "linky-deny").apply { isDaemon = true }.start()
+        }
     }
 
     override fun stop() {
         stopMedia()
         control.stop()
         nsd?.stop()
+    }
+
+    private companion object {
+        const val TAG = "linky"
     }
 }

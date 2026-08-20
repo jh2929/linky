@@ -237,10 +237,13 @@ class VaapiVideoEncoder : public VideoEncoder {
     ctx_->bit_rate = bitrate_kbps_ * 1000;
     ctx_->rc_max_rate = bitrate_kbps_ * 1000;
     ctx_->rc_buffer_size = bitrate_kbps_ * 1000 / std::max(4, fps_ / 2);
-    ctx_->gop_size = fps_ * 2;            // IDR cada 2 s
+    ctx_->gop_size = fps_;                 // IDR cada 1 s (recuperación rápida ante pérdidas)
     ctx_->max_b_frames = 0;               // sin B-frames (baja latencia)
     ctx_->flags |= AV_CODEC_FLAG_LOW_DELAY;
     ctx_->thread_count = 1;
+    // VAAPI ignora bit_rate sin rc_mode explícito (por defecto usa calidad
+    // constante y dispara el bitrate muy por encima del objetivo).
+    av_opt_set(ctx_->priv_data, "rc_mode", "CBR", 0);
 
     err = avcodec_open2(ctx_, codec, nullptr);
     if (err < 0) {

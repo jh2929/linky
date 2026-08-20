@@ -110,8 +110,8 @@ void stream_stop() {
 }
 
 void stream_start(const Device& dev) {
-  int fps = 60;
-  int bitrate = 12000;
+  int fps = 30;
+  int bitrate = 6000;
   if (const char* e = getenv("LINKY_TRAY_FPS")) fps = atoi(e);
   if (const char* e = getenv("LINKY_TRAY_BITRATE")) bitrate = atoi(e);
 

@@ -91,6 +91,7 @@ class RtpReceiver {
         if (p.length < 12) return
         val seq = ((b[2].toInt() and 0xff) shl 8) or (b[3].toInt() and 0xff)
         val ts = rtpTsOf(p)
+        val marker = (b[1].toInt() and 0x80) != 0
 
         // CCTV de secuencia: hueco → NACK (una vez por pérdida).
         if (expectSeq >= 0) {
@@ -100,19 +101,23 @@ class RtpReceiver {
         expectSeq = (seq + 1) and 0xffff
 
         depacketize(b, p.length, ts)
-        // Entrega del jitter buffer (AUs atrasados) sin orden estricto.
+        // El bit marker delimita el AU: entregarlo entero (SPS+PPS+IDR
+        // juntos) es lo que MediaCodec espera en cada buffer de entrada.
+        if (marker) flushAu()
     }
 
     private fun depacketize(b: ByteArray, len: Int, ts: Long) {
         if (len < 14) return
+        auTs = ts
         val off = 12
-        if (b[off].toInt() and 0x80 == 0) return // NO empezar en Fragmento FU intermedio
+        val b0 = b[off].toInt()
+        val t264 = b0 and 0x1f
+        val t265 = (b0 shr 1) and 0x3f
 
-        val nalHeader = b[off].toInt()
-        val fuType = nalHeader and 0x1f
-
-        if (fuType == 28 || fuType == 49) {
+        if (t264 == 28 || t265 == 49) {
             // FU-A (H.264) / FU (H.265): ensamblar el Anexo B.
+            // El payload del 1er fragmento (off+2) incluye la cabecera NAL
+            // completa; los siguientes son continuación.
             val fu = b[off + 1].toInt()
             val payload = b.copyOfRange(off + 2, len)
             if ((fu and 0x80) != 0) {          // start
@@ -121,26 +126,25 @@ class RtpReceiver {
                 fuBuf = fuBuf.plus(payload)
             }
             if ((fu and 0x40) != 0 && fuBuf.isNotEmpty()) {  // end
-                // fuBuf ya incluye la cabecera NAL (el payload del 1er fragmento
-                // empieza en off+2, que ES la cabecera).
-                val au = ByteArray(fuBuf.size + 4)
-                au[0] = 0; au[1] = 0; au[2] = 0; au[3] = 1
-                System.arraycopy(fuBuf, 0, au, 4, fuBuf.size)
+                auBuf = auBuf.plus(byteArrayOf(0, 0, 0, 1)).plus(fuBuf)
                 fuBuf = ByteArray(0)
-                deliver(au, ts)
             }
         } else {
-            val au = ByteArray(len - off + 4)
-            au[0] = 0; au[1] = 0; au[2] = 0; au[3] = 1
-            System.arraycopy(b, off, au, 4, len - off)
-            deliver(au, ts)
+            // NAL entero (SPS/PPS/VPS/IDR…): start code + payload.
+            auBuf = auBuf.plus(byteArrayOf(0, 0, 0, 1))
+                .plus(b.copyOfRange(off, len))
         }
     }
 
     private var fuBuf: ByteArray = ByteArray(0)
+    private var auBuf: ByteArray = ByteArray(0)
+    private var auTs: Long = 0
 
-    private fun deliver(au: ByteArray, ts: Long) {
-        sink?.onVideoAu(Au(au, ts))
+    private fun flushAu() {
+        if (auBuf.isEmpty()) return
+        val au = auBuf
+        auBuf = ByteArray(0)
+        sink?.onVideoAu(Au(au, auTs))
     }
 
     // ── RTCP ───────────────────────────────────────────────────────────────

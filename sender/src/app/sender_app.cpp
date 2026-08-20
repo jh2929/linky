@@ -235,9 +235,10 @@ void SenderApp::video_frame_cb(AVFrame* f) {
     double dt = std::max(1.0, (now - last_stats_ns_) / 1e9);
     SenderStats st;
     st.fps = (last_fps_ns_ > 0)
-                 ? fps_ema_ = fps_ema_ * 0.8 + (1.0 / dt) * 0.2
+                 ? fps_ema_ = fps_ema_ * 0.8 + (encoded_.load() - last_frames_) / dt * 0.2
                  : 0.0;
     last_fps_ns_ = now;
+    last_frames_ = encoded_.load();
     st.kbps = vbytes_since_ * 8 / dt / 1000.0;
     vbytes_since_ = 0;
     st.frames_encoded = static_cast<int>(encoded_.load());

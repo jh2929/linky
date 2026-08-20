@@ -1,5 +1,6 @@
 package dev.linky.receiver.net
 
+import android.util.Log
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
@@ -34,6 +35,7 @@ class ControlServer(
     fun start() {
         running.set(true)
         Thread({ acceptLoop() }, "linky-control").apply { isDaemon = true }.start()
+        Log.i(TAG, "control escuchando en :$port")
     }
 
     fun stop() {
@@ -66,6 +68,7 @@ class ControlServer(
             val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
             val writer = OutputStreamWriter(socket.getOutputStream())
             var pendingDeny = false
+            Log.i(TAG, "nueva conexión de control ${socket.inetAddress?.hostAddress}")
 
             val accept = {
                 if (!welcomeSent) {
@@ -84,6 +87,7 @@ class ControlServer(
                     writer.write(w.toString() + "\n")
                     writer.flush()
                     welcomeSent = true
+                    Log.i(TAG, "welcome enviado (codec=$codec, audio=$negotiatedAudio)")
                     onWelcome?.invoke(hello, codec, negotiatedAudio)
                 }
             }
@@ -102,20 +106,24 @@ class ControlServer(
                 val o = JSONObject(line)
                 if (o.optString("type") == "hello") {
                     negotiated = Hello(
-                        senderId = o.optString("sender_id"),
-                        senderName = o.optString("sender_name"),
+                        senderId = o.optString("senderId").ifEmpty { o.optString("sender_id") },
+                        senderName = o.optString("device").ifEmpty { o.optString("sender_name") },
                         codecs = o.optJSONArray("codecs")?.let {
                             (0 until it.length()).map { n -> it.getString(n) }
-                        } ?: emptyList(),
+                        } ?: o.optString("codecs").split(",").map { it.trim() }
+                            .filter { it.isNotEmpty() },
                     )
                     negotiatedCodecs = negotiated.codecs
+                    Log.i(TAG, "hello recibido de '${negotiated.senderName}' codecs=${negotiated.codecs}")
                     onHello(negotiated, accept, deny)
                     if (pendingDeny) break
                 } else if (o.optString("type") == "bye") {
                     break
                 }
             }
-        } catch (_: Exception) {
+            Log.i(TAG, "sesión de control terminada")
+        } catch (e: Exception) {
+            Log.w(TAG, "error en sesión de control", e)
         } finally {
             runCatching { socket.close() }
             synchronized(sockets) { sockets.remove(socket) }
@@ -138,5 +146,9 @@ class ControlServer(
         if (codecs.contains("h265") && android.os.Build.VERSION.SDK_INT >= 21) return "h265"
         if (codecs.contains("h264")) return "h264"
         return "h264"
+    }
+
+    private companion object {
+        const val TAG = "linky"
     }
 }

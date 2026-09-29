@@ -50,15 +50,30 @@ class MediaEngine(
         }
         val surface = sink.surface
 
-        val vf = MediaFormat.createVideoFormat(videoMime, 0, 0)
-        if (Build.VERSION.SDK_INT >= 26) {
-            vf.setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
-            vf.setInteger(MediaFormat.KEY_OPERATING_RATE, 60)
+        val w = if (hello.width > 0) hello.width else 1920
+        val h = if (hello.height > 0) hello.height else 1080
+        val fps = if (hello.fps > 0) hello.fps else 60
+
+        val vf = MediaFormat.createVideoFormat(videoMime, w, h).apply {
+            setInteger(MediaFormat.KEY_FRAME_RATE, fps)
+            setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, maxOf(1048576, w * h))
+            if (Build.VERSION.SDK_INT >= 26) {
+                setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
+                setInteger(MediaFormat.KEY_OPERATING_RATE, fps)
+            }
         }
-        videoCodec = MediaCodec.createDecoderByType(videoMime).also { c ->
-            c.configure(vf, surface, null, 0)
-            c.start()
+
+        android.util.Log.i("linky-dec", "Inicializando decodificador $videoMime (${w}x${h}@${fps})")
+        val codec = MediaCodec.createDecoderByType(videoMime)
+        try {
+            codec.configure(vf, surface, null, 0)
+        } catch (e: Exception) {
+            android.util.Log.w("linky-dec", "Configuración LOW_LATENCY falló; reintentando modo estándar", e)
+            val fallbackFmt = MediaFormat.createVideoFormat(videoMime, w, h)
+            codec.configure(fallbackFmt, surface, null, 0)
         }
+        codec.start()
+        videoCodec = codec
         Thread({ videoOutLoop() }, "linky-render").apply { isDaemon = true }.start()
 
         if (audioName.contains("opus") && Build.VERSION.SDK_INT >= 31) {
@@ -145,9 +160,14 @@ class MediaEngine(
             if (idx < 0) return
             val buf = c.getInputBuffer(idx) ?: return
             buf.clear()
+            if (data.size > buf.remaining()) {
+                android.util.Log.w("linky-dec", "Buffer de MediaCodec insuficiente: capacidad=${buf.remaining()}, payload=${data.size}")
+                return
+            }
             buf.put(data)
-            c.queueInputBuffer(idx, 0, data.size, ptsUs, flags)
-        } catch (_: Exception) {
+            c.queueInputBuffer(idx, 0, data.size, maxOf(0L, ptsUs), flags)
+        } catch (e: Exception) {
+            android.util.Log.w("linky-dec", "Error en sendToCodec", e)
         }
     }
 

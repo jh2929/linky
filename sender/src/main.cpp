@@ -28,22 +28,41 @@ void on_signal(int) { g_quit = true; }
 // completa" por defecto cuando no se pide un tamaño concreto.
 static bool screen_size(int& w, int& h) {
   FILE* p = popen("xrandr --current 2>/dev/null", "r");
-  if (!p) return false;
-  char buf[256];
-  bool ok = false;
-  while (fgets(buf, sizeof buf, p)) {
-    int sw = 0, sh = 0;
-    char sep[2] = {0};
-    // línea del modo activo:  "1366x768      59.80*+"
-    if (sscanf(buf, "%dx%d%1s", &sw, &sh, sep) == 3 && *sep) {
-      w = sw;
-      h = sh;
-      ok = true;
-      break;
+  if (p) {
+    char buf[256];
+    while (fgets(buf, sizeof buf, p)) {
+      int sw = 0, sh = 0;
+      char sep[2] = {0};
+      // línea del modo activo:  "1366x768      59.80*+"
+      if (sscanf(buf, "%dx%d%1s", &sw, &sh, sep) == 3 && *sep) {
+        w = sw;
+        h = sh;
+        pclose(p);
+        return true;
+      }
+    }
+    pclose(p);
+  }
+  // Fallback para compositores Wayland (Hyprland / wlr)
+  p = popen("hyprctl monitors -j 2>/dev/null", "r");
+  if (p) {
+    std::string out;
+    char buf[256];
+    while (fgets(buf, sizeof buf, p)) out += buf;
+    pclose(p);
+    auto pos_w = out.find("\"width\":");
+    auto pos_h = out.find("\"height\":");
+    if (pos_w != std::string::npos && pos_h != std::string::npos) {
+      if (sscanf(out.c_str() + pos_w, "\"width\": %d", &w) == 1 &&
+          sscanf(out.c_str() + pos_h, "\"height\": %d", &h) == 1 && w > 0 && h > 0) {
+        return true;
+      }
     }
   }
-  pclose(p);
-  return ok;
+  // Fallback universal seguro
+  w = 1920;
+  h = 1080;
+  return true;
 }
 
 static void run_probe() {

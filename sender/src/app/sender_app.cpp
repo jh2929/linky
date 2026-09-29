@@ -187,7 +187,9 @@ void SenderApp::begin_media(const ControlClient::Welcome& w) {
 
   // RTCP (hilo propio)
   running_ = true;
-  rtcp_thread_ = std::thread([this, &w] { rtcp_loop(w.vrtcp, w.artcp); });
+  int vrtcp = w.vrtcp;
+  int artcp = w.artcp;
+  rtcp_thread_ = std::thread([this, vrtcp, artcp] { rtcp_loop(vrtcp, artcp); });
 }
 
 void SenderApp::video_frame_cb(AVFrame* f) {

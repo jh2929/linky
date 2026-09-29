@@ -16,6 +16,9 @@ data class Hello(
     val senderId: String,
     val senderName: String,
     val codecs: List<String>,
+    val width: Int = 1920,
+    val height: Int = 1080,
+    val fps: Int = 60,
 )
 
 /**
@@ -105,6 +108,16 @@ class ControlServer(
                 if (line.isBlank()) continue
                 val o = JSONObject(line)
                 if (o.optString("type") == "hello") {
+                    val vres = o.optString("vres")
+                    var reqW = 1920
+                    var reqH = 1080
+                    if (vres.contains("x")) {
+                        val parts = vres.split("x")
+                        reqW = parts.getOrNull(0)?.toIntOrNull() ?: 1920
+                        reqH = parts.getOrNull(1)?.toIntOrNull() ?: 1080
+                    }
+                    val reqFps = o.optString("vrate").toIntOrNull() ?: o.optInt("fps", 60)
+
                     negotiated = Hello(
                         senderId = o.optString("senderId").ifEmpty { o.optString("sender_id") },
                         senderName = o.optString("device").ifEmpty { o.optString("sender_name") },
@@ -112,10 +125,19 @@ class ControlServer(
                             (0 until it.length()).map { n -> it.getString(n) }
                         } ?: o.optString("codecs").split(",").map { it.trim() }
                             .filter { it.isNotEmpty() },
+                        width = reqW,
+                        height = reqH,
+                        fps = reqFps,
                     )
                     negotiatedCodecs = negotiated.codecs
-                    Log.i(TAG, "hello recibido de '${negotiated.senderName}' codecs=${negotiated.codecs}")
+                    Log.i(TAG, "hello recibido de '${negotiated.senderName}' codecs=${negotiated.codecs} res=${reqW}x${reqH}@${reqFps}")
                     onHello(negotiated, accept, deny)
+                    if (!welcomeSent && !pendingDeny) {
+                        // Avisar al emisor que estamos esperando confirmación en el TV
+                        writer.write(JSONObject().put("type", "request").toString() + "\n")
+                        writer.flush()
+                        Log.i(TAG, "notificado al emisor: esperando confirmación (type=request)")
+                    }
                     if (pendingDeny) break
                 } else if (o.optString("type") == "bye") {
                     break

@@ -178,7 +178,12 @@ class LinkyService : Service() {
     fun requestStart() {
         LinkyPrefs(this).enabled = true
         if (!running) {
-            startService(Intent(this, LinkyService::class.java).setAction(ACTION_START))
+            try {
+                val intent = Intent(this, LinkyService::class.java).setAction(ACTION_START)
+                androidx.core.content.ContextCompat.startForegroundService(this, intent)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error starting LinkyService in requestStart: ${e.message}", e)
+            }
         }
     }
 
@@ -186,7 +191,11 @@ class LinkyService : Service() {
     fun requestStop() {
         LinkyPrefs(this).enabled = false
         if (running) {
-            startService(Intent(this, LinkyService::class.java).setAction(ACTION_STOP))
+            try {
+                startService(Intent(this, LinkyService::class.java).setAction(ACTION_STOP))
+            } catch (e: Exception) {
+                Log.e(TAG, "Error stopping LinkyService in requestStop: ${e.message}", e)
+            }
         }
     }
 
@@ -239,21 +248,29 @@ class LinkyService : Service() {
     }
 
     private fun launchUi() {
-        val intent = Intent(this, MainActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-        startActivity(intent)
+        try {
+            val intent = Intent(this, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+            startActivity(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error launching UI from service: ${e.message}", e)
+        }
     }
 
     // ── Notificación de servicio en primer plano ──────────────────────────
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            getString(R.string.notification_channel),
-            NotificationManager.IMPORTANCE_LOW,
-        )
-        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        try {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                getString(R.string.notification_channel),
+                NotificationManager.IMPORTANCE_LOW,
+            )
+            getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error creating notification channel: ${e.message}", e)
+        }
     }
 
     private fun buildNotification(): Notification {
@@ -272,11 +289,24 @@ class LinkyService : Service() {
     }
 
     private fun promoteToForeground() {
-        ServiceCompat.startForeground(
-            this,
-            NOTIFICATION_ID,
-            buildNotification(),
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE,
-        )
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ServiceCompat.startForeground(
+                    this,
+                    NOTIFICATION_ID,
+                    buildNotification(),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE,
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, buildNotification())
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start with foregroundServiceType, falling back: ${e.message}", e)
+            try {
+                startForeground(NOTIFICATION_ID, buildNotification())
+            } catch (e2: Exception) {
+                Log.e(TAG, "Failed fallback startForeground: ${e2.message}", e2)
+            }
+        }
     }
 }

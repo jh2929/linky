@@ -142,8 +142,12 @@ class MainActivity : AppCompatActivity(), MediaSink {
                 svc.requestStart()
             } else {
                 LinkyPrefs(this).enabled = true
-                startService(Intent(this, LinkyService::class.java)
-                    .setAction(LinkyService.ACTION_START))
+                try {
+                    val intent = Intent(this, LinkyService::class.java).setAction(LinkyService.ACTION_START)
+                    androidx.core.content.ContextCompat.startForegroundService(this, intent)
+                } catch (e: Exception) {
+                    android.util.Log.e("MainActivity", "Error starting LinkyService: ${e.message}", e)
+                }
             }
         }
 
@@ -165,18 +169,30 @@ class MainActivity : AppCompatActivity(), MediaSink {
         super.onStart()
         deviceIpText.text = getLocalIpAddress()
         if (!bound) {
-            bindService(Intent(this, LinkyService::class.java), conn, Context.BIND_AUTO_CREATE)
+            try {
+                bindService(Intent(this, LinkyService::class.java), conn, Context.BIND_AUTO_CREATE)
+            } catch (e: Exception) {
+                android.util.Log.e("MainActivity", "Error binding LinkyService: ${e.message}", e)
+            }
         }
         if (LinkyPrefs(this).enabled) {
-            startService(Intent(this, LinkyService::class.java)
-                .setAction(LinkyService.ACTION_START))
+            try {
+                val intent = Intent(this, LinkyService::class.java).setAction(LinkyService.ACTION_START)
+                androidx.core.content.ContextCompat.startForegroundService(this, intent)
+            } catch (e: Exception) {
+                android.util.Log.e("MainActivity", "Error starting LinkyService onStart: ${e.message}", e)
+            }
         }
     }
 
     override fun onStop() {
         if (bound) {
-            service?.unregisterSink()
-            unbindService(conn)
+            try {
+                service?.unregisterSink()
+                unbindService(conn)
+            } catch (e: Exception) {
+                android.util.Log.e("MainActivity", "Error unbinding LinkyService: ${e.message}", e)
+            }
             bound = false
             service = null
         }
@@ -229,19 +245,19 @@ class MainActivity : AppCompatActivity(), MediaSink {
 
     private fun getLocalIpAddress(): String {
         try {
-            val interfaces = NetworkInterface.getNetworkInterfaces()
+            val interfaces = NetworkInterface.getNetworkInterfaces() ?: return "127.0.0.1"
             while (interfaces.hasMoreElements()) {
-                val iface = interfaces.nextElement()
+                val iface = interfaces.nextElement() ?: continue
                 if (iface.isLoopback || !iface.isUp) continue
-                val addrs = iface.inetAddresses
+                val addrs = iface.inetAddresses ?: continue
                 while (addrs.hasMoreElements()) {
-                    val addr = addrs.nextElement()
+                    val addr = addrs.nextElement() ?: continue
                     if (!addr.isLoopbackAddress && addr is Inet4Address) {
                         return addr.hostAddress ?: ""
                     }
                 }
             }
-        } catch (_: Exception) {}
+        } catch (_: Throwable) {}
         return "127.0.0.1"
     }
 }

@@ -142,3 +142,21 @@ install(FILES linky.desktop
         DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
 install(FILES resources/icons/linky.svg
         DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)
+
+# Configuración CPack (.deb, .rpm, .tar.gz)
+set(CPACK_PACKAGE_NAME "linky-sender")
+set(CPACK_PACKAGE_VENDOR "Linky")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Transmisión de pantalla de baja latencia para Linux y Android TV")
+set(CPACK_PACKAGE_VERSION "1.0.0")
+set(CPACK_PACKAGE_CONTACT "Linky Developers <https://github.com/jh2929/linky>")
+set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/jh2929/linky")
+
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Linky Developers")
+set(CPACK_DEBIAN_PACKAGE_SECTION "video")
+set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+
+set(CPACK_RPM_PACKAGE_LICENSE "MIT")
+set(CPACK_RPM_PACKAGE_GROUP "Applications/Multimedia")
+
+set(CPACK_GENERATOR "TGZ;DEB;RPM")
+include(CPack)

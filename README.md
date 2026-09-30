@@ -1,71 +1,121 @@
 # Linky
 
-Transmisión de pantalla local (cualquier PC Linux → tu TV Android), sin nube ni cuentas.
+> **Transmisión de pantalla local de ultra baja latencia (< 100 ms) desde Linux a Android TV, con soporte integrado para Apple AirPlay.** 100 % privado, sin servidores externos, sin cuentas y sin depender de Internet.
 
 ```
-┌─────────────┐  RTP/UDP:61034/35  ┌──────────────────┐
-│  Emisor      │  RTCP:61036        │  Receptor TV      │
-│  (Linux)     │◄──────────────────►│  (Android TV)     │
-│  captura→HW  │  TCP/JSON:61032    │  MediaCodec       │
-│  encode→RTP  │  hello/welcome     │  SurfaceView      │
-└─────────────┘  NSD _linky._tcp    └──────────────────┘
+┌───────────────────────────┐         RTP/UDP:61034 (Video)         ┌───────────────────────────┐
+│       Emisor Linux        │         RTP/UDP:61035 (Audio)         │    Receptor Android TV    │
+│  - Captura Wayland / X11  │◄─────────────────────────────────────►│  - MediaCodec HW (Low Lat)│
+│  - Encode HW (VAAPI/FFmpeg│         RTCP/UDP:61036 (Sync/NACK)    │  - SurfaceView Fullscreen │
+│  - App Oficial Libadwaita │                                       │  - UI Minimalista 10-Foot │
+│  - linky-stream CLI       │         TCP/JSON:61032 (Control)      │  - Soporte Apple AirPlay  │
+│  - linky-tray (SystemTray)│◄─────────────────────────────────────►│  - Anuncio mDNS (_linky)  │
+└───────────────────────────┘          mDNS (_linky._tcp)           └───────────────────────────┘
 ```
 
-- **Emisor** `sender/` (MIT): captura Wayland screencopy / portal / X11, encode H.264/HEVC por VAAPI, RTP+RTCP, descubrimiento por avahi/mDNS.
-- **Receptor** `receiver/` (GPL-3.0): Android TV, control TCP/JSON, RTP/RTCP con NACK/PLI, MediaCodec → Surface, audio Opus → AudioTrack, auth por aceptación manual, anuncio `_linky._tcp` por NSD. Arquitectura de protocolos abierta vía `ProtocolAdapter` (AirPlay queda aislado en un módulo aparte, no implementado aún).
+---
 
-## Descargar sin compilar
+## ✨ Características Principales
 
-Releases: https://github.com/jh2929/linky/releases
+* ⚡ **Ultra Baja Latencia (< 100 ms):** Pipeline optimizado con codificación por hardware en Linux (`VA-API` / `FFmpeg`) y decodificación hardware con `MediaCodec` `KEY_LOW_LATENCY` en Android TV.
+* 🖥️ **Aplicación Oficial para Linux (`linky-desktop`):** Interfaz gráfica moderna desarrollada con **Libadwaita** y **GTK4**. Descubrimiento automático de televisores por mDNS, selección de monitores, presets de FPS (30/60) y slider de bitrate dinámico.
+* 📺 **Experiencia TV Minimalista (10-Foot UI):**
+  * Diseño estético monocromo y sobrio en escala de grises y negro profundo.
+  * Navegación 100 % adaptada a mando a distancia (D-Pad) con foco de alto contraste.
+  * Cuadro modal de pareamiento (*"Aceptar y Recordar"*) con un solo clic.
+  * HUD de rendimiento en pantalla (FPS, Bitrate, Códec) alternable con el botón `[OK]` o `[Abajo]` del control remoto.
+* 🍎 **Compatibilidad Mixta Apple AirPlay:** Módulo AirPlay integrado y aislado para duplicar pantalla directamente desde iPhone, iPad o Mac.
+* 🛡️ **Privacidad Absoluta:** No envía telemetría ni datos a la nube. Todo el tráfico de vídeo y audio viaja en tu red local (LAN).
 
-| Artefacto | Para | Instalación |
+---
+
+## 📦 Descargas e Instalación
+
+Los paquetes precompilados de cada versión están disponibles en [Releases de GitHub](https://github.com/jh2929/linky/releases).
+
+| Formato | Plataforma | Instalación rápida |
 |---|---|---|
-| `linky-receiver.apk` | Android TV | `adb install linky-receiver.apk`, o bájalo en el navegador del TV y ábrelo (permite sideload) |
-| `linky-sender-linux-x86_64.tar.gz` | PC Linux x86_64 (glibc) | descomprimir y ejecutar `./linky-sender` |
+| **`linky-receiver.apk`** | Android TV / Google TV | `adb install -r linky-receiver.apk` *(o abrir desde el navegador del TV / pendrive)* |
+| **`linky-sender-x86_64.AppImage`** | Linux (Universal) | `chmod +x linky-sender-x86_64.AppImage && ./linky-sender-x86_64.AppImage` |
+| **`linky-sender_amd64.deb`** | Debian / Ubuntu / Mint / Pop!_OS | `sudo apt install ./linky-sender_amd64.deb` |
+| **`linky-sender.x86_64.rpm`** | Fedora / RHEL / openSUSE | `sudo dnf install ./linky-sender.x86_64.rpm` |
+| **`linky-sender-linux-x86_64.tar.gz`** | Arch / Tarball Genérico | Descomprimir y ejecutar `./linky-desktop` o `./linky-stream` |
 
-## Probar (TV + PC en la misma red)
+---
 
-1. Instala el APK en el TV y ábrelo (pantalla negra "Esperando emisor…").
-2. En el PC:
-   ```sh
-   tar xzf linky-sender-linux-x86_64.tar.gz
-   ./linky-sender --fps 30 --bitrate 6000 --width 1920 --height 1080
-   ```
-   (en Wayland añade `LINKY_VIDEO_BACKEND=screencopy`; si no hay portal, usa `LINKY_VIDEO_BACKEND=x11` en X11/Xwayland).
-3. El emisor detecta el TV por mDNS y conecta. Primera vez, el TV pregunta *"el emisor «X» quiere transmitir"* → **Aceptar** (queda en confianza).
+## 🚀 Guía de Uso
 
-### Sin TV a mano: probar el emisor contra el dumpreceiver
+### 1. En el Televisor (Android TV / Google TV)
+1. Instala y abre la app **Linky** en tu televisor.
+2. Verás la pantalla de espera minimalista mostrando el nombre de tu TV y su **Dirección IP local** (ej. `192.168.1.45`).
+3. El televisor queda listo automáticamente a la espera de transmisiones.
 
-```sh
-./linky-sender --connect 127.0.0.1 --width 1366 --height 768 --no-audio &
-./linky-dumpreceiver --decode
+### 2. Desde tu PC Linux
+* **Modo Gráfico (Recomendado):**
+  Abre **Linky Stream** desde tu lanzador de aplicaciones (o ejecuta `linky-desktop`).
+  Tu televisor aparecerá automáticamente en la lista de dispositivos descubiertos. Ajusta los FPS o Bitrate deseados y pulsa **"Transmitir"**.
+* **Modo Terminal / CLI:**
+  ```bash
+  # Conexión automática por nombre descubierto:
+  linky-stream
+
+  # O especificando resolución y destino directo:
+  linky-stream --connect 192.168.1.45 --fps 60 --bitrate 8000
+  ```
+
+### 3. Primera Conexión (Autorización)
+La primera vez que un ordenador transmite, el televisor mostrará el diálogo:
+> *«El equipo "PC-Linux" quiere transmitir su pantalla»*
+> Presiona **[Aceptar y Recordar]** con el mando a distancia del TV. En futuras ocasiones se conectará automáticamente.
+
+### 4. Modo Apple AirPlay
+En la pantalla principal del televisor, selecciona el botón **[AirPlay (Apple)]**. El televisor quedará visible para el menú "Duplicar Pantalla" de tu iPhone, iPad o Mac.
+
+---
+
+## 🛠️ Compilación desde el Código Fuente
+
+### Requisitos en Linux (Arch / Ubuntu / Fedora)
+* **Compilador:** C++17, CMake 3.20+
+* **Librerías:** `ffmpeg` (libavcodec, libavformat, libswscale), `pipewire`, `avahi-client`, `wayland-client`, `gtk4`, `libadwaita-1`, `openssl`.
+
+```bash
+# Clonar repositorio con submódulos
+git clone --recursive https://github.com/jh2929/linky.git
+cd linky
+
+# Compilar Emisor Linux
+cmake -B sender/build -S sender -DCMAKE_BUILD_TYPE=Release
+cmake --build sender/build -j$(nproc)
+
+# Ejecutables resultantes en sender/build/:
+# - linky-desktop (App gráfica oficial Libadwaita)
+# - linky-stream (Motor CLI headless)
+# - linky-tray (Bandeja del sistema)
+# - linky-dumpreceiver (Receptor de pruebas de loopback local)
 ```
-Debe salir: frames, keyframes y 0 errores.
 
-## Construir
+### Compilar Receptor Android TV
+Requiere Android Studio o JDK 17 + Android SDK / NDK:
+```bash
+cd receiver
+./gradlew assembleDebug
 
-**Emisor (Arch/CachyOS):**
-```sh
-sudo pacman -S cmake ffmpeg pipewire avahi wayland wayland-utils glib2 openssl
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build
-sudo cp build/linky-sender build/linky-dumpreceiver /usr/local/bin/
+# APK generado en:
+# receiver/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-**Receptor / CI:** el workflow de GitHub Actions compila el APK (JDK 17 + SDK) y publica el artefacto `linky-receiver-apk`.
+---
 
-## Documentación técnica
+## 📐 Arquitectura y Documentación Técnica
 
-- `docs/PLAN.md` — fases, estado, criterios verificados.
-- `docs/ARCHITECTURE.md` — diseño del transporte, backends de captura (incluye §8.1 fallos de portal/screencopy del entorno), Roadmap.
+* [`docs/PIPELINE_FLOW.md`](docs/PIPELINE_FLOW.md) — Flujo E2E detallado (Handshake → RTP → MediaCodec → Renderizado) y diagnóstico de capas.
+* [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — Diseño de transporte RTP/RTCP, análisis de latencia y capas de captura.
+* [`docs/preview_tv_ui.html`](docs/preview_tv_ui.html) — Vista previa interactiva de la interfaz del televisor.
 
-## Licencias
+---
 
-- Emisor: MIT (`sender/LICENSE`).
-- Receptor: GPL-3.0 (compatibilidad con UxPlay/AirPlay) (`receiver/LICENSE`).
+## ⚖️ Licencias
 
-## Roadmap
-
-- AirPlay dentro de un adaptador aislado (submódulo UxPlay/AirPlayServer).
-- Configuración de descodificación en TV, latencia ajustable.
-- Emisor: audio AAC/Opus-AAC fallback, AV1 (HW), multi-monitor.
+* **Emisor Linux (`sender/`):** Licencia MIT ([`sender/LICENSE`](sender/LICENSE)).
+* **Receptor Android (`receiver/`):** Licencia GPL-3.0 por integración de submódulo AirPlay ([`receiver/LICENSE`](receiver/LICENSE)).

@@ -1,5 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="black">#FF000000</color>
-    <color name="accent">#2DD4BF</color>
+    <color name="accent">#06B6D4</color>
+    <color name="tv_bg_gradient_start">#0B0F19</color>
+    <color name="tv_bg_gradient_end">#111827</color>
+    <color name="tv_card_bg">#201E293B</color>
+    <color name="tv_card_stroke">#334155</color>
+    <color name="tv_card_stroke_focused">#38BDF8</color>
+    <color name="tv_btn_primary_normal">#0284C7</color>
+    <color name="tv_btn_primary_focused">#0EA5E9</color>
+    <color name="tv_btn_secondary_normal">#334155</color>
+    <color name="tv_btn_secondary_focused">#475569</color>
+    <color name="tv_btn_airplay_normal">#1E40AF</color>
+    <color name="tv_btn_airplay_focused">#2563EB</color>
+    <color name="tv_btn_danger_normal">#991B1B</color>
+    <color name="tv_btn_danger_focused">#DC2626</color>
+    <color name="tv_status_active">#10B981</color>
+    <color name="tv_status_inactive">#64748B</color>
+    <color name="tv_text_primary">#F8FAFC</color>
+    <color name="tv_text_secondary">#94A3B8</color>
+    <color name="tv_text_muted">#64748B</color>
+    <color name="tv_scrim">#CC000000</color>
+    <color name="tv_hud_bg">#D90F172A</color>
 </resources>

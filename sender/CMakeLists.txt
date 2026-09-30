@@ -83,8 +83,36 @@ target_link_libraries(linky-stream PRIVATE
   PkgConfig::GLIB PkgConfig::OPENSSL ${AV_STATIC_LIBS}
 )
 
-# linky-tray: menú GTK4 con descubrimiento DNS-SD para la barra del sistema.
 pkg_check_modules(GTK4 REQUIRED IMPORTED_TARGET gtk4)
+pkg_check_modules(ADW REQUIRED IMPORTED_TARGET libadwaita-1)
+
+# linky-desktop: Aplicación oficial de escritorio moderna con Libadwaita (GTK4).
+add_executable(linky-desktop
+  src/ui/desktop_app.cpp
+  src/common/log.cpp
+  src/common/json.cpp
+  src/common/util.cpp
+  src/discovery/discovery.cpp
+  src/capture/video_portal.cpp
+  src/capture/video_screencopy.cpp
+  ${SCREENCOPY_HEADER}
+  ${SCREENCOPY_CODE}
+  src/capture/video_x11.cpp
+  src/capture/audio.cpp
+  src/encode/encoder.cpp
+  src/rtp/packetizer.cpp
+  src/rtp/rtcp.cpp
+  src/session/control.cpp
+  src/app/sender_app.cpp
+)
+target_include_directories(linky-desktop PRIVATE src ${CMAKE_CURRENT_BINARY_DIR}/generated)
+add_dependencies(linky-desktop screencopy_proto)
+target_link_libraries(linky-desktop PRIVATE
+  PkgConfig::ADW PkgConfig::GTK4 PkgConfig::AV PkgConfig::PW PkgConfig::AVA PkgConfig::WAYLAND
+  PkgConfig::GLIB PkgConfig::OPENSSL ${AV_STATIC_LIBS}
+)
+
+# linky-tray: menú GTK4 con descubrimiento DNS-SD para la barra del sistema.
 add_executable(linky-tray
   src/tray/tray_main.cpp
   src/common/log.cpp
@@ -105,3 +133,12 @@ add_executable(linky-dumpreceiver
 )
 target_include_directories(linky-dumpreceiver PRIVATE src)
 target_link_libraries(linky-dumpreceiver PRIVATE PkgConfig::AV PkgConfig::OPENSSL ${AV_STATIC_LIBS})
+
+# Reglas de instalación
+include(GNUInstallDirs)
+install(TARGETS linky-desktop linky-stream linky-tray linky-dumpreceiver
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES linky.desktop
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+install(FILES resources/icons/linky.svg
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)

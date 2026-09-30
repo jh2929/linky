@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Linky Stream
+GenericName=Screen Mirroring & Streaming
+Comment=Transmite tu pantalla a tu Android TV o Google TV sin internet ni nubes
+Exec=linky-desktop
+Icon=linky
+Terminal=false
+Categories=AudioVideo;Video;Network;Utility;
+Keywords=screen;mirror;cast;tv;streaming;display;
+StartupNotify=true

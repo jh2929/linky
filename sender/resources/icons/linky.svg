@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="256" height="256" rx="56" fill="url(#bg-gradient)"/>
+  <rect x="28" y="44" width="200" height="136" rx="16" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round"/>
+  <path d="M96 212H160" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round"/>
+  <path d="M128 180V212" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round"/>
+  <!-- Broadcast Wave Symbol -->
+  <circle cx="128" cy="112" r="14" fill="#06B6D4"/>
+  <path d="M102 86C116.36 71.64 139.64 71.64 154 86" stroke="#06B6D4" stroke-width="10" stroke-linecap="round"/>
+  <path d="M80 64C106.51 37.49 149.49 37.49 176 64" stroke="#38BDF8" stroke-width="10" stroke-linecap="round"/>
+  <defs>
+    <linearGradient id="bg-gradient" x1="0" y1="0" x2="256" y2="256" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F172A"/>
+      <stop offset="1" stop-color="#1E293B"/>
+    </linearGradient>
+  </defs>
+</svg>

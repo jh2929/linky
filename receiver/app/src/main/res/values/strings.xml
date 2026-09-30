@@ -1,17 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Linky</string>
-    <string name="status_off">Apagado</string>
-    <string name="status_idle">Encendido · esperando emisor…</string>
-    <string name="status_streaming">Transmitiendo</string>
+    <string name="app_subtitle">Transmisión de pantalla ultra baja latencia</string>
+    <string name="device_info_title">Información de Red</string>
+    <string name="device_name_label">Nombre del TV:</string>
+    <string name="device_ip_label">IP Local:</string>
+    <string name="status_off">Servicio Desactivado</string>
+    <string name="status_idle">Esperando conexión…</string>
+    <string name="status_streaming">Transmitiendo pantalla</string>
     <string name="status_lost">Conexión perdida</string>
-    <string name="power_on">Encender</string>
-    <string name="power_off">Apagar</string>
-    <string name="boot_auto_start">Iniciar al encender el TV</string>
-    <string name="request_title">El emisor «%1$s» quiere transmitir</string>
-    <string name="request_accept">Aceptar</string>
-    <string name="request_deny">Cancelar</string>
-    <string name="btn_airplay">Modo AirPlay</string>
+    <string name="power_on">Encender Receptor</string>
+    <string name="power_off">Apagar Receptor</string>
+    <string name="boot_auto_start">Iniciar automáticamente con el TV</string>
+    <string name="instructions_title">¿Cómo conectar desde tu PC Linux?</string>
+    <string name="instructions_desc">En tu ordenador Linux abre Linky Desktop o ejecuta en tu terminal:\nlinky-stream</string>
+    <string name="request_dialog_title">Solicitud de Transmisión</string>
+    <string name="request_dialog_msg">El equipo «%1$s» desea transmitir su pantalla.</string>
+    <string name="request_accept">Aceptar y Recordar</string>
+    <string name="request_deny">Rechazar</string>
+    <string name="btn_airplay">Modo AirPlay (Apple)</string>
+    <string name="btn_airplay_desc">Para iPhone, iPad o Mac</string>
+    <string name="hud_title">Métricas de Transmisión</string>
+    <string name="hud_toggle_hint">Pulsa [OK] o [Abajo] para alternar panel de diagnóstico</string>
     <string name="notification_channel">Receptor Linky</string>
     <string name="notification_title">Linky activo</string>
     <string name="notification_text">Esperando emisor en la red local</string>

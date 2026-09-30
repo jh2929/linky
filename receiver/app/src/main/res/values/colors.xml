@@ -1,25 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="black">#FF000000</color>
-    <color name="accent">#06B6D4</color>
-    <color name="tv_bg_gradient_start">#0B0F19</color>
-    <color name="tv_bg_gradient_end">#111827</color>
-    <color name="tv_card_bg">#201E293B</color>
-    <color name="tv_card_stroke">#334155</color>
-    <color name="tv_card_stroke_focused">#38BDF8</color>
-    <color name="tv_btn_primary_normal">#0284C7</color>
-    <color name="tv_btn_primary_focused">#0EA5E9</color>
-    <color name="tv_btn_secondary_normal">#334155</color>
-    <color name="tv_btn_secondary_focused">#475569</color>
-    <color name="tv_btn_airplay_normal">#1E40AF</color>
-    <color name="tv_btn_airplay_focused">#2563EB</color>
-    <color name="tv_btn_danger_normal">#991B1B</color>
-    <color name="tv_btn_danger_focused">#DC2626</color>
-    <color name="tv_status_active">#10B981</color>
-    <color name="tv_status_inactive">#64748B</color>
-    <color name="tv_text_primary">#F8FAFC</color>
-    <color name="tv_text_secondary">#94A3B8</color>
-    <color name="tv_text_muted">#64748B</color>
-    <color name="tv_scrim">#CC000000</color>
-    <color name="tv_hud_bg">#D90F172A</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="tv_bg">#FF09090B</color>
+    <color name="tv_surface">#FF18181B</color>
+    <color name="tv_surface_glass">#E618181B</color>
+    <color name="tv_border">#FF27272A</color>
+    <color name="tv_border_focused">#FFFFFFFF</color>
+    <color name="tv_btn_focused_bg">#FFFFFFFF</color>
+    <color name="tv_btn_focused_text">#FF09090B</color>
+    <color name="tv_btn_normal_bg">#1AFFFFFF</color>
+    <color name="tv_btn_normal_text">#FFE4E4E7</color>
+    <color name="tv_text_primary">#FFF4F4F5</color>
+    <color name="tv_text_secondary">#FFA1A1AA</color>
+    <color name="tv_text_muted">#FF71717A</color>
+    <color name="tv_scrim">#E6000000</color>
+    <color name="tv_dot_active">#FFFFFFFF</color>
+    <color name="tv_dot_inactive">#FF52525B</color>
 </resources>

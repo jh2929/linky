@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/tv_btn_focused_bg" />
+            <corners android:radius="14dp" />
+            <stroke
+                android:width="2dp"
+                android:color="@color/white" />
+        </shape>
+    </item>
+    <item android:state_pressed="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#E4E4E7" />
+            <corners android:radius="14dp" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/tv_btn_normal_bg" />
+            <corners android:radius="14dp" />
+            <stroke
+                android:width="1dp"
+                android:color="@color/tv_border" />
+        </shape>
+    </item>
+</selector>

@@ -199,8 +199,8 @@ class MainActivity : AppCompatActivity(), MediaSink {
 
     private fun updatePowerUi(running: Boolean) {
         powerBtn.text = getString(if (running) R.string.power_off else R.string.power_on)
-        powerBtn.setBackgroundResource(if (running) R.drawable.btn_tv_danger else R.drawable.btn_tv_primary)
-        statusDot.setBackgroundColor(androidx.core.content.ContextCompat.getColor(this, if (running) R.color.tv_status_active else R.color.tv_status_inactive))
+        powerBtn.setBackgroundResource(R.drawable.btn_tv_minimal)
+        statusDot.setBackgroundColor(androidx.core.content.ContextCompat.getColor(this, if (running) R.color.tv_dot_active else R.color.tv_dot_inactive))
     }
 
     private fun showRequest(senderName: String) {

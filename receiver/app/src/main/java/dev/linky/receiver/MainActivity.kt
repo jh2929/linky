@@ -13,10 +13,9 @@ import android.view.View
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
-import android.widget.ScrollView
-import android.widget.Switch
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.SwitchCompat
 import dev.linky.receiver.media.MediaSink
 import dev.linky.receiver.service.LinkyService
 import java.net.Inet4Address
@@ -32,14 +31,14 @@ import java.net.NetworkInterface
 class MainActivity : AppCompatActivity(), MediaSink {
 
     private lateinit var surfaceView: android.view.SurfaceView
-    private lateinit var standbyContainer: ScrollView
+    private lateinit var standbyContainer: View
     private lateinit var statusDot: View
     private lateinit var statusText: TextView
     private lateinit var deviceNameText: TextView
     private lateinit var deviceIpText: TextView
     private lateinit var powerBtn: Button
     private lateinit var airplayBtn: Button
-    private lateinit var bootSwitch: Switch
+    private lateinit var bootSwitch: SwitchCompat
 
     private lateinit var hudContainer: LinearLayout
     private lateinit var hudCodecText: TextView
